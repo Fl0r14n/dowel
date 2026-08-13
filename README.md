@@ -92,8 +92,7 @@ cannot interleave inside the callback and steal each other's container.
 
 A stored value is treated as absent — and so replaced by your default — when it is `null`, `undefined`, a
 primitive, or an **empty plain object**. A class instance is never absent: its methods live on the prototype,
-so `Object.keys` is empty and a naive emptiness check would clobber a provided override. That rule is
-`isVacant`, and it is exported if you need to reason about it.
+so `Object.keys` is empty and a naive emptiness check would clobber a provided override.
 
 One consequence worth knowing: `provide('flag', false)` then `inject('flag', true)` returns `true`. Primitives
 are vacant. Wrap primitives in a config object, or provide them and never pass a default.
@@ -134,7 +133,6 @@ package boundary; keep class tokens for app-local services.
 | Export | What |
 | --- | --- |
 | `createInjector(registry)` | `provide`/`inject` over any `() => Registry` thunk — what the bindings are built from |
-| `isVacant(value)` | the absence rule above |
 | `createContainer(location?)` | a `Container`: a `Map` of providers plus the request url |
 | `runInContainer(container, fn)` | binds a container for a synchronous callback, restoring the previous one |
 | `activeContainer()` | the currently bound container, if any |

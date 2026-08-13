@@ -1,7 +1,3 @@
-/** The framework-free half of the DI: `provide`/`inject` over whatever registry the caller hands in.
- * A binding supplies the `registry` thunk — vue reads it off the app's injection context, react off the
- * active container — and everything else about resolution lives here, once. */
-
 import { injectionKey, type ProviderToken } from './token'
 
 export type Registry = Map<string, any>

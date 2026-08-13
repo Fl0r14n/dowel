@@ -5,5 +5,7 @@
  * decision, and a default here would resolve against the wrong one half the time. */
 
 export { activeContainer, type Container, containerRegistry, createContainer, runInContainer } from './container'
-export { createInjector, type Injector, isVacant, type Registry } from './injector'
+// `isVacant` is deliberately absent: it is `inject`'s overwrite policy, not a general-purpose predicate, and
+// nothing outside this package has a reason to call it. It was module-private in both storefronts too.
+export { createInjector, type Injector, type Registry } from './injector'
 export { type AbstractType, injectionKey, type ProviderToken, type Type } from './token'
