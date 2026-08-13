@@ -110,13 +110,21 @@ and a project swaps in its own implementation without the library knowing. `prov
 anything resolves — in bootstrap, and under SSR once per request.
 
 ```ts
-// vue — inside the app's own injection context, right after the plugin
+// vue — a plugin of your own, installed after createProviders()
+export const tenantServices = {
+  install: (app: App) =>
+    app.runWithContext(() => {
+      provide(CartService, new TenantCartService())
+      provide('ApiContext', { siteId: () => 'outlet' })
+    })
+}
+
 app.use(createProviders())
-app.runWithContext(() => {
-  provide(CartService, new TenantCartService())
-  provide('ApiContext', { siteId: () => 'outlet' })
-})
+app.use(tenantServices)
 ```
+
+`app.runWithContext` is not optional there: a plugin's `install` receives the app but runs with no injection
+context, so a bare `provide` inside it throws. Vue's own plugin API is `app.provide` for the same reason.
 
 ```ts
 // react — on the request's container, before render
