@@ -80,7 +80,7 @@ const cart = useService(CartService, () => new CartService())
 Outside components, bind the container for the duration of a **synchronous** callback:
 
 ```ts
-import { inject, runInContainer } from 'inject-braid'
+import { inject, runInContainer } from 'inject-braid/react'
 
 runInContainer(container, () => inject(CartService, () => new CartService()))
 ```
@@ -143,10 +143,14 @@ package boundary; keep class tokens for app-local services.
 | `ProviderToken`, `Type`, `AbstractType`, `Registry`, `Injector`, `Container` | types |
 
 From `inject-braid/vue`: `createProviders`, `createVueInjector`, `provide`, `inject`.
-From `inject-braid/react`: `ContainerProvider`, `useContainer`, `useService`, `provide`, `inject`.
+
+From `inject-braid/react`: `ContainerProvider`, `useContainer`, `useService`, `provide`, `inject`, plus
+`createContainer`, `runInContainer`, `activeContainer` and the `Container` type re-exported from the core —
+so a route loader and a component import from the same place.
 
 The root entry exports no bound `provide`/`inject` on purpose — which registry is in play is the binding's
-decision, and a default here would resolve against the wrong one half the time.
+decision, and a default here would resolve against the wrong one half the time. Reach for the root when you
+are writing a binding of your own: `createInjector(containerRegistry)` is the whole of the react one.
 
 ## Requirements
 

@@ -9,6 +9,10 @@ import { type Container, containerRegistry, runInContainer } from '../container'
 import { createInjector, type Injector } from '../injector'
 import type { ProviderToken } from '../token'
 
+/** Re-exported so react-side code has one import site: a route loader reaching for `runInContainer` and a
+ * component reaching for `useService` should not have to know which half of the package each lives in. */
+export { activeContainer, type Container, createContainer, runInContainer } from '../container'
+
 const injector: Injector = createInjector(containerRegistry)
 
 export const provide: Injector['provide'] = injector.provide
