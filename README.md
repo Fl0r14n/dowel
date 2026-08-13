@@ -111,16 +111,16 @@ anything resolves — in bootstrap, and under SSR once per request.
 
 ```ts
 // vue — a plugin of your own, installed after createProviders()
-export const tenantServices = {
+export const tenantServices = (siteId: string) => ({
   install: (app: App) =>
     app.runWithContext(() => {
       provide(CartService, new TenantCartService())
-      provide('ApiContext', { siteId: () => 'outlet' })
+      provide('ApiContext', { siteId: () => siteId })
     })
-}
+})
 
 app.use(createProviders())
-app.use(tenantServices)
+app.use(tenantServices('outlet'))
 ```
 
 `app.runWithContext` is not optional there: a plugin's `install` receives the app but runs with no injection
