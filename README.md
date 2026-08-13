@@ -39,18 +39,16 @@ your bundle.
 The registry lives on the app instance, so one per app — and therefore one per request under SSR.
 
 ```ts
-import { createProviders, createVueInjector } from 'inject-braid/vue'
+import { createProviders, inject, provide } from 'inject-braid/vue'
 
 app.use(createProviders()) // once per app
 
-export const { provide, inject } = createVueInjector({
-  hint: 'Resolve inside a component setup, a store setup or a navigation guard.'
-})
+const cart = inject(CartService, () => new CartService())
 ```
 
 Calls need a vue injection context — component setup, store setup, `app.runWithContext`. Off-context it
-throws rather than guessing, and `hint` is appended to that error so you can point people at your own
-bootstrap. A plain `provide`/`inject` pair is exported too if you don't need the hint.
+throws rather than guessing, since answering from a fallback would mean one request reading another's
+services.
 
 ## react
 

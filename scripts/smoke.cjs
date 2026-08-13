@@ -3,7 +3,7 @@
 
 const { createContainer, runInContainer } = require('../dist/index.cjs')
 const { ContainerProvider, inject, useService } = require('../dist/react.cjs')
-const { createProviders, createVueInjector } = require('../dist/vue.cjs')
+const { createProviders, inject: vInject, provide: vProvide } = require('../dist/vue.cjs')
 
 let failed = 0
 const check = (name, ok) => {
@@ -29,6 +29,6 @@ check('containers isolated', a.providers.get('t') === 'a' && b.providers.get('t'
 
 // the active slot hangs off `Symbol.for` + globalThis, so the esm and cjs halves of this very package share
 // it — that is the whole point, and requiring after importing is the cheapest way to prove it
-check('vue binding exports', typeof createProviders === 'function' && typeof createVueInjector === 'function')
+check('vue binding exports', typeof createProviders === 'function' && typeof vProvide === 'function' && typeof vInject === 'function')
 
 process.exit((failed && 1) || 0)

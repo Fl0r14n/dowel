@@ -22,22 +22,20 @@ export const createProviders = (): ProvidersPlugin => ({
   install: (app: App) => app.provide(PROVIDERS, new Map<string, any>())
 })
 
-export interface VueInjectorOptions {
-  /** Appended to the not-in-context error. Name the host's own bootstrap and its valid call sites here —
-   * a generic message sends people looking in the wrong place. */
-  hint?: string
-}
-
-export const createVueInjector = ({ hint }: VueInjectorOptions = {}): Injector =>
-  createInjector(() => {
-    const providers = (hasInjectionContext() && vueInject(PROVIDERS, undefined)) || undefined
-    if (!providers) {
-      throw new Error(`[inject-braid]: no provider registry in this injection context.${(hint && ` ${hint}`) || ''}`)
-    }
-    return providers
-  })
-
-const injector: Injector = createVueInjector()
+/** The registry is read at call time, not captured, so one module-level injector serves every app and every
+ * request. There is nothing per-instance to configure — hence no factory to export. */
+const injector: Injector = createInjector(() => {
+  const providers = (hasInjectionContext() && vueInject(PROVIDERS, undefined)) || undefined
+  if (!providers) {
+    // both causes named: off-context is the common one, a missing `createProviders()` the one that survives
+    // into production because it only fails on the paths that resolve
+    throw new Error(
+      '[inject-braid]: no provider registry — either this ran outside a vue injection context (resolve inside ' +
+        'a component setup, a store setup or a navigation guard), or `app.use(createProviders())` was never called.'
+    )
+  }
+  return providers
+})
 
 export const provide: Injector['provide'] = injector.provide
 export const inject: Injector['inject'] = injector.inject

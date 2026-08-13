@@ -50,14 +50,16 @@ describe('vue binding', () => {
   it('throws outside an injection context rather than answering from a global', () => {
     appContext() // an app exists, but we are not inside its context
 
-    expect(() => inject('anything')).toThrow('[inject-braid]: no provider registry in this injection context')
+    expect(() => inject('anything')).toThrow('[inject-braid]: no provider registry')
     expect(() => provide('anything', { v: 1 })).toThrow('[inject-braid]')
   })
 
   it('throws inside a context whose app never installed the registry', () => {
     const bare = createApp({ render: () => null })
 
-    expect(() => bare.runWithContext(() => inject('anything'))).toThrow('[inject-braid]')
+    // the message must name this cause too — it is the one that reaches production, since it only fails on
+    // the paths that actually resolve something
+    expect(() => bare.runWithContext(() => inject('anything'))).toThrow('createProviders')
   })
 
   describe('defaultValue behavior', () => {
