@@ -1,6 +1,6 @@
 # inject-braid
 
-Token-based dependency injection with no registration step. ~115 lines, no dependencies, SSR-safe.
+Token-based dependency injection with no registration step. ~120 lines, no dependencies, SSR-safe.
 
 ```sh
 npm i inject-braid   # bun add inject-braid
@@ -57,7 +57,7 @@ React has no injection context, so the registry is an explicit `Container` you m
 ```tsx
 import { ContainerProvider, createContainer, useService } from 'inject-braid/react'
 
-const container = createContainer(url)
+const container = createContainer()
 ;<ContainerProvider container={container}>{app}</ContainerProvider>
 
 const cart = useService(CartService, () => new CartService())
@@ -75,39 +75,30 @@ runInContainer(container, () => inject(CartService, () => new CartService()))
 Synchronous on purpose: factories only wire dependencies, they never await, so concurrent SSR renders cannot
 interleave and steal each other's container.
 
+With no container bound, resolving **throws**. There is no shared fallback registry — one would read as
+working right up until SSR, where it is one request resolving another request's services.
+
 | Export | What |
 | --- | --- |
 | `ContainerProvider` | holds the per-request container for the tree |
 | `useService(token, default?)` | resolve against the container in React context |
 | `useContainer()` | the container itself |
-| `provide`, `inject` | resolve against the ambient container, for non-component code |
-| `createContainer`, `runInContainer`, `activeContainer` | re-exported from the core, so one import site |
+| `provide`, `inject` | resolve against the bound container, for non-component code |
+| `createContainer`, `runInContainer` | re-exported from the core, so one import site |
 
 ## agnostic
 
-The framework-free core, for building your own binding. A binding's whole job is supplying the registry
-thunk — everything else is shared:
-
-```ts
-import { containerRegistry, createInjector } from 'inject-braid'
-
-export const { provide, inject } = createInjector(containerRegistry)
-```
-
-That line *is* the react binding. Swap `containerRegistry` for anything returning a `Map<string, any>` and you
-have a binding for solid, svelte, or plain node.
+The root entry carries no framework and no bound `provide`/`inject` — which registry is in play is the
+binding's decision. What's here is the container and the token types:
 
 | Export | What |
 | --- | --- |
-| `createInjector(registry)` | `provide`/`inject` over a `() => Registry` thunk |
-| `createContainer(location?)` | a `Container` — a `Map` of providers plus the request url |
+| `createContainer()` | a `Container` — a `Map` of providers |
 | `runInContainer(container, fn)` | binds a container for a sync callback, restoring the previous one |
-| `activeContainer()`, `containerRegistry()` | the bound container, and its map or a shared fallback |
-| `injectionKey(token)` | a token's registry key — the string, or the class `name` |
-| `ProviderToken`, `Type`, `AbstractType`, `Registry`, `Injector`, `Container` | types |
+| `ProviderToken`, `Type`, `AbstractType`, `Registry`, `Container` | types |
 
-No bound `provide`/`inject` here on purpose: which registry is in play is the binding's decision, and a
-default would resolve against the wrong one half the time.
+Useful for the code that owns request lifecycle — an SSR entry making one container per request, or a test
+harness — without dragging react or vue into that module's graph.
 
 ## Three things that will bite you
 

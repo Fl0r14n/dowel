@@ -7,14 +7,22 @@ import { ContainerProvider, inject, provide, useService } from '.'
 
 afterEach(cleanup)
 
-// the bare `provide`/`inject` with no active container resolve against the module fallback map — that is the
-// unit-test and module-bootstrap path, and it is shared for the whole file
-describe('react binding, no container bound', () => {
+// every resolve needs an active container — there is no fallback map to answer from
+const inContainer = <T,>(fn: () => T): T => runInContainer(createContainer(), fn)
+
+describe('react binding, outside components', () => {
+  it('throws when no container is bound rather than answering from a shared map', () => {
+    expect(() => inject('anything')).toThrow('[inject-braid]: no active container')
+    expect(() => provide('anything', { v: 1 })).toThrow('runInContainer')
+  })
+
   it('provides and injects a string token', () => {
     const value = { id: 1 }
 
-    provide('test-string-token', value)
-    expect(inject('test-string-token')).toBe(value)
+    inContainer(() => {
+      provide('test-string-token', value)
+      expect(inject('test-string-token')).toBe(value)
+    })
   })
 
   it('provides and injects a class token', () => {
@@ -23,48 +31,58 @@ describe('react binding, no container bound', () => {
     }
     const value = new TestService()
 
-    provide(TestService, value)
-    expect(inject(TestService)).toBe(value)
+    inContainer(() => {
+      provide(TestService, value)
+      expect(inject(TestService)).toBe(value)
+    })
   })
 
   it('returns undefined for an unprovided token', () => {
-    expect(inject('non-existent-token')).toBeUndefined()
+    expect(inContainer(() => inject('non-existent-token'))).toBeUndefined()
   })
 
   it('overwrites an existing value when providing again', () => {
     const value1 = { v: 1 }
     const value2 = { v: 2 }
 
-    provide('overwrite-token', value1)
-    expect(inject('overwrite-token')).toBe(value1)
+    inContainer(() => {
+      provide('overwrite-token', value1)
+      expect(inject('overwrite-token')).toBe(value1)
 
-    provide('overwrite-token', value2)
-    expect(inject('overwrite-token')).toBe(value2)
+      provide('overwrite-token', value2)
+      expect(inject('overwrite-token')).toBe(value2)
+    })
   })
 
   describe('defaultValue behavior', () => {
     it('uses and stores the default when the key is absent', () => {
       const defaultValue = { default: true }
 
-      expect(inject('default-value-token', defaultValue)).toBe(defaultValue)
-      expect(inject('default-value-token')).toBe(defaultValue)
+      inContainer(() => {
+        expect(inject('default-value-token', defaultValue)).toBe(defaultValue)
+        expect(inject('default-value-token')).toBe(defaultValue)
+      })
     })
 
     it('ignores the default when the key holds a non-empty object', () => {
       const existingValue = { existing: true }
 
-      provide('existing-token', existingValue)
+      inContainer(() => {
+        provide('existing-token', existingValue)
 
-      expect(inject('existing-token', { default: true })).toBe(existingValue)
+        expect(inject('existing-token', { default: true })).toBe(existingValue)
+      })
     })
 
     // documents current behaviour: a value with no own keys (primitive, empty object) counts as vacant and
     // is overwritten by a supplied default
     it('overwrites primitives and empty objects with the default', () => {
-      provide('primitive-token', 123)
+      inContainer(() => {
+        provide('primitive-token', 123)
 
-      expect(inject('primitive-token', 456)).toBe(456)
-      expect(inject('primitive-token')).toBe(456)
+        expect(inject('primitive-token', 456)).toBe(456)
+        expect(inject('primitive-token')).toBe(456)
+      })
     })
 
     it('invokes a factory default lazily, once, per container', () => {
@@ -113,14 +131,15 @@ describe('react binding, no container bound', () => {
   })
 
   describe('per-container scoping', () => {
-    it('scopes providers per container and falls back to the module map without one', () => {
+    it('scopes providers per container', () => {
       const first = createContainer()
       const second = createContainer()
 
       runInContainer(first, () => provide('scoped-service', { app: 1 }))
       expect(runInContainer(first, () => inject<{ app: number }>('scoped-service').app)).toBe(1)
       expect(runInContainer(second, () => inject('scoped-service'))).toBeUndefined()
-      expect(inject('scoped-service')).toBeUndefined()
+      // and once the binding unwinds there is nowhere left to resolve against at all
+      expect(() => inject('scoped-service')).toThrow('no active container')
     })
 
     it('restores the previous container when nesting, even on throw', () => {

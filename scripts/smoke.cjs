@@ -16,9 +16,8 @@ class Svc {
 }
 
 // --- container path (what the react binding resolves through)
-const c = createContainer(new URL('https://x.test/en/USD/'))
+const c = createContainer()
 check('container lazy default', runInContainer(c, () => inject(Svc, () => new Svc())).value === 'x')
-check('container location kept', c.location.pathname === '/en/USD/')
 check('react binding exports', typeof ContainerProvider === 'function' && typeof useService === 'function')
 
 const a = createContainer()
