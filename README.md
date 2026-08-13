@@ -9,17 +9,17 @@ npm i inject-braid   # bun add inject-braid
 A service declares its own default, at the point of use:
 
 ```ts
-const cart = inject(CartService, () => new CartService())
+const logger = inject(Logger, () => new ConsoleLogger())
 ```
 
-The first call runs the factory and stores it, so every later `inject(CartService)` — anywhere, any module —
+The first call runs the factory and stores it, so every later `inject(Logger)` — anywhere, any module —
 returns that same instance. The factory *is* the registration. There is no container to wire, no `bind`, no
 decorators, no build step.
 
 Override it by providing first:
 
 ```ts
-provide(CartService, new MockCartService())
+provide(Logger, new TestLogger())
 ```
 
 Do it before anything resolves, typically in bootstrap. Provide later and the registry takes the new value,
@@ -29,8 +29,8 @@ Tokens are strings or classes. An abstract class is both the runtime key (its `n
 type (its `prototype`), so a service needs no separate interface and token:
 
 ```ts
-export abstract class CartService {
-  abstract add(sku: string): Promise<void>
+export abstract class Logger {
+  abstract log(message: string): void
 }
 ```
 
@@ -46,7 +46,7 @@ import { createProviders, inject, provide } from 'inject-braid/vue'
 
 app.use(createProviders()) // once per app
 
-const cart = inject(CartService, () => new CartService())
+const logger = inject(Logger, () => new ConsoleLogger())
 ```
 
 Calls need a vue injection context — component setup, store setup, `app.runWithContext`. Off-context it
@@ -63,7 +63,7 @@ import { ContainerProvider, createContainer, useService } from 'inject-braid/rea
 const container = createContainer()
 ;<ContainerProvider container={container}>{app}</ContainerProvider>
 
-const cart = useService(CartService, () => new CartService())
+const logger = useService(Logger, () => new ConsoleLogger())
 ```
 
 Outside components — loaders, guards, service factories — bind the container around a **synchronous**
@@ -72,7 +72,7 @@ callback:
 ```ts
 import { inject, runInContainer } from 'inject-braid/react'
 
-runInContainer(container, () => inject(CartService, () => new CartService()))
+runInContainer(container, () => inject(Logger, () => new ConsoleLogger()))
 ```
 
 Synchronous on purpose: factories only wire dependencies, they never await, so concurrent SSR renders cannot
@@ -105,22 +105,22 @@ harness — without dragging react or vue into that module's graph.
 
 ## overriding a library's services
 
-The case this is built for: a library ships `inject(CartService, () => new CartService())` at its call sites,
+The case this is built for: a library ships `inject(Logger, () => new ConsoleLogger())` at its call sites,
 and a project swaps in its own implementation without the library knowing. `provide` the replacement before
 anything resolves — in bootstrap, and under SSR once per request.
 
 ```ts
 // vue — a plugin of your own, installed after createProviders()
-export const tenantServices = (siteId: string) => ({
+export const myModule = (endpoint: string) => ({
   install: (app: App) =>
     app.runWithContext(() => {
-      provide(CartService, new TenantCartService())
-      provide('ApiContext', { siteId: () => siteId })
+      provide(Logger, new RemoteLogger(endpoint))
+      provide('Config', { verbose: true })
     })
 })
 
 app.use(createProviders())
-app.use(tenantServices('outlet'))
+app.use(myModule('https://logs.example'))
 ```
 
 `app.runWithContext` is not optional there: a plugin's `install` receives the app but runs with no injection
@@ -130,7 +130,8 @@ context, so a bare `provide` inside it throws. Vue's own plugin API is `app.prov
 // react — on the request's container, before render
 const container = createContainer()
 runInContainer(container, () => {
-  provide(CartService, new TenantCartService())
+  provide(Logger, new RemoteLogger('https://logs.example'))
+  provide('Config', { verbose: true })
 })
 render(<ContainerProvider container={container}>{app}</ContainerProvider>)
 ```
