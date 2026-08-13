@@ -1,39 +1,29 @@
 # inject-braid
 
-Token-based dependency injection with **no registration step**, in ~115 lines with no dependencies.
+Token-based dependency injection with no registration step. ~115 lines, no dependencies, SSR-safe.
 
 ```sh
 npm i inject-braid   # bun add inject-braid
 ```
 
-- **No container wiring.** `inject(Token, () => new Thing())` resolves and memoises on first use. There is no
-  `bind`, no module, no `@injectable`, no decorator metadata, no build-step transform.
-- **One core, two bindings.** `inject-braid/vue` and `inject-braid/react` differ only in where the registry
-  lives. Resolution itself is shared, so behaviour cannot drift between them.
-- **SSR by construction.** A registry per vue app, or a per-request `Container` under react. No ambient
-  module-level map holding one request's cart while the next request reads it.
-
-## The idea
-
-A service declares its own default, at the injection site:
+A service declares its own default, at the point of use:
 
 ```ts
 const cart = inject(CartService, () => new CartService())
 ```
 
-First call runs the factory and **stores** it, so every later `inject(CartService)` — anywhere, in any
-module — returns that same instance. The factory *is* the registration, which is why there is no separate
-registration phase to keep in sync with the consumers.
+The first call runs the factory and stores it, so every later `inject(CartService)` — anywhere, any module —
+returns that same instance. The factory *is* the registration. There is no container to wire, no `bind`, no
+decorators, no build step.
 
-Overriding is `provide` before anything resolves:
+Override it by providing first:
 
 ```ts
-provide(CartService, new MockCartService()) // tests, or a tenant-specific implementation
+provide(CartService, new MockCartService())
 ```
 
-Tokens are strings or classes. Abstract classes are the interesting case — one declaration is both the
-runtime key (its `name`) and the compile-time type (its `prototype`), so a service needs no separate
-interface + token pair:
+Tokens are strings or classes. An abstract class is both the runtime key (its `name`) and the compile-time
+type (its `prototype`), so a service needs no separate interface and token:
 
 ```ts
 export abstract class CartService {
@@ -41,10 +31,12 @@ export abstract class CartService {
 }
 ```
 
+Pick one of the three entries below. `inject-braid/vue` and `inject-braid/react` never pull each other into
+your bundle.
+
 ## vue
 
-The registry lives on the app instance via `app.provide`, so one map per app — and therefore one per request
-under SSR — with no ambient global involved.
+The registry lives on the app instance, so one per app — and therefore one per request under SSR.
 
 ```ts
 import { createProviders, createVueInjector } from 'inject-braid/vue'
@@ -56,28 +48,25 @@ export const { provide, inject } = createVueInjector({
 })
 ```
 
-Every call needs a vue injection context — component setup, store setup, `app.runWithContext`. Off-context it
-**throws** rather than answering from a fallback, because a silent wrong answer under SSR is cross-request
-data. `hint` is appended to that error; name your app's own bootstrap and valid call sites there.
-
-A bare `provide`/`inject` pair is exported too, for apps that don't need a custom hint.
+Calls need a vue injection context — component setup, store setup, `app.runWithContext`. Off-context it
+throws rather than guessing, and `hint` is appended to that error so you can point people at your own
+bootstrap. A plain `provide`/`inject` pair is exported too if you don't need the hint.
 
 ## react
 
-React has no injection context of its own, so the registry is an explicit `Container`, reached two ways:
-through React context inside components, and through the ambient active container everywhere else — service
-factories, route loaders, guards.
+React has no injection context, so the registry is an explicit `Container` you make per request.
 
 ```tsx
 import { ContainerProvider, createContainer, useService } from 'inject-braid/react'
 
-const container = createContainer(url) // one per request under SSR
+const container = createContainer(url)
 ;<ContainerProvider container={container}>{app}</ContainerProvider>
 
 const cart = useService(CartService, () => new CartService())
 ```
 
-Outside components, bind the container for the duration of a **synchronous** callback:
+Outside components — loaders, guards, service factories — bind the container around a **synchronous**
+callback:
 
 ```ts
 import { inject, runInContainer } from 'inject-braid/react'
@@ -85,75 +74,60 @@ import { inject, runInContainer } from 'inject-braid/react'
 runInContainer(container, () => inject(CartService, () => new CartService()))
 ```
 
-Synchronous on purpose: service factories only wire dependencies, they never await, so concurrent SSR renders
-cannot interleave inside the callback and steal each other's container.
-
-## Vacancy, and what counts as "already provided"
-
-A stored value is treated as absent — and so replaced by your default — when it is `null`, `undefined`, a
-primitive, or an **empty plain object**. A class instance is never absent: its methods live on the prototype,
-so `Object.keys` is empty and a naive emptiness check would clobber a provided override.
-
-One consequence worth knowing: `provide('flag', false)` then `inject('flag', true)` returns `true`. Primitives
-are vacant. Wrap primitives in a config object, or provide them and never pass a default.
-
-## Two duplicate-copy hazards this is built around
-
-Both are the "two copies of React" failure: module-level state duplicated because the module got evaluated
-twice — two installed versions, a nested install, a bundler that fails to dedupe. Everything type-checks and
-resolves; it breaks only at runtime.
-
-1. **A bare `Symbol('providers')`** is minted fresh per evaluation, so two copies hold two distinct keys and
-   the map installed by one is invisible to the other — every resolve throws.
-2. **A module-level `let active`** duplicates the same way, but resolution then falls through to the shared
-   fallback map instead of throwing. Silent, and under SSR that shared map is cross-request leakage.
-
-Hence `Symbol.for('inject-braid.providers')` for the vue registry key, and a `globalThis`-held active slot
-under `Symbol.for('inject-braid.active.v1')`.
-
-Only one of the two carries a version, and the asymmetry is deliberate. The vue key holds a bare
-`Map<string, any>` — no shape to be incompatible about, so two majors sharing it resolve each other's
-services, which beats each installing a registry the other cannot see. The active slot holds a `Container`,
-whose shape can gain fields in a future major; versioning it keeps v2 from reading a v1-written container and
-finding it malformed.
-
-## What this deliberately is not
-
-No scopes, no transient lifetimes, no hierarchical child injectors, no async resolution, no multi-providers,
-no circular-dependency detection. One registry per app or per request, one instance per token, resolved
-lazily. If you need any of the above, [brandi](https://www.npmjs.com/package/brandi) is the better tool and
-this is the wrong package.
-
-Class tokens key off `Function.prototype.name`, so **a published bundle must not mangle its token classes** —
-minified names are unstable across builds and can collide. Prefer string tokens for anything crossing a
-package boundary; keep class tokens for app-local services.
-
-## API
+Synchronous on purpose: factories only wire dependencies, they never await, so concurrent SSR renders cannot
+interleave and steal each other's container.
 
 | Export | What |
 | --- | --- |
-| `createInjector(registry)` | `provide`/`inject` over any `() => Registry` thunk — what the bindings are built from |
-| `createContainer(location?)` | a `Container`: a `Map` of providers plus the request url |
-| `runInContainer(container, fn)` | binds a container for a synchronous callback, restoring the previous one |
-| `activeContainer()` | the currently bound container, if any |
-| `containerRegistry()` | the active container's map, or a shared fallback |
-| `injectionKey(token)` | the registry key for a token — the string, or the class `name` |
+| `ContainerProvider` | holds the per-request container for the tree |
+| `useService(token, default?)` | resolve against the container in React context |
+| `useContainer()` | the container itself |
+| `provide`, `inject` | resolve against the ambient container, for non-component code |
+| `createContainer`, `runInContainer`, `activeContainer` | re-exported from the core, so one import site |
+
+## agnostic
+
+The framework-free core, for building your own binding. A binding's whole job is supplying the registry
+thunk — everything else is shared:
+
+```ts
+import { containerRegistry, createInjector } from 'inject-braid'
+
+export const { provide, inject } = createInjector(containerRegistry)
+```
+
+That line *is* the react binding. Swap `containerRegistry` for anything returning a `Map<string, any>` and you
+have a binding for solid, svelte, or plain node.
+
+| Export | What |
+| --- | --- |
+| `createInjector(registry)` | `provide`/`inject` over a `() => Registry` thunk |
+| `createContainer(location?)` | a `Container` — a `Map` of providers plus the request url |
+| `runInContainer(container, fn)` | binds a container for a sync callback, restoring the previous one |
+| `activeContainer()`, `containerRegistry()` | the bound container, and its map or a shared fallback |
+| `injectionKey(token)` | a token's registry key — the string, or the class `name` |
 | `ProviderToken`, `Type`, `AbstractType`, `Registry`, `Injector`, `Container` | types |
 
-From `inject-braid/vue`: `createProviders`, `createVueInjector`, `provide`, `inject`.
+No bound `provide`/`inject` here on purpose: which registry is in play is the binding's decision, and a
+default would resolve against the wrong one half the time.
 
-From `inject-braid/react`: `ContainerProvider`, `useContainer`, `useService`, `provide`, `inject`, plus
-`createContainer`, `runInContainer`, `activeContainer` and the `Container` type re-exported from the core —
-so a route loader and a component import from the same place.
+## Three things that will bite you
 
-The root entry exports no bound `provide`/`inject` on purpose — which registry is in play is the binding's
-decision, and a default here would resolve against the wrong one half the time. Reach for the root when you
-are writing a binding of your own: `createInjector(containerRegistry)` is the whole of the react one.
+**Primitives count as absent.** `provide('flag', false)` then `inject('flag', true)` returns `true`. A stored
+value is replaced by your default when it is nullish, a primitive, or an empty plain object — a class instance
+never is, since its methods live on the prototype. Wrap primitives in a config object.
+
+**Don't mangle token classes.** Class tokens key off `name`, and minified names are unstable across builds and
+can collide. Use string tokens across package boundaries, class tokens for app-local services.
+
+**One instance per token, and that's all.** No scopes, no transient lifetimes, no child injectors, no async
+resolution, no multi-providers. If you need those, [brandi](https://www.npmjs.com/package/brandi) is the
+better tool.
 
 ## Requirements
 
-Node 22+, Bun, Deno, or any current browser. Nothing is imported from `node:*`. ESM and CJS both shipped.
-`vue` and `react` are optional peers — you only need the one whose binding you import.
+Node 22+, Bun, Deno, or any current browser. Nothing from `node:*`. ESM and CJS both shipped. `vue` and
+`react` are optional peers — you need only the one whose binding you import.
 
 ## Development
 
