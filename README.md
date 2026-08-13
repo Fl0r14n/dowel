@@ -146,22 +146,6 @@ token.
 Overriding a *token* rather than a class works the same way and is what to prefer across a package boundary,
 since class tokens key off `name` and a minifier can rewrite it.
 
-## Things that will bite you
-
-**Primitives count as absent.** `provide('flag', false)` then `inject('flag', true)` returns `true`. A stored
-value is replaced by your default when it is nullish, a primitive, or an empty plain object — a class instance
-never is, since its methods live on the prototype. Wrap primitives in a config object.
-
-**Don't mangle token classes.** Class tokens key off `name`, and minified names are unstable across builds and
-can collide. Use string tokens across package boundaries, class tokens for app-local services.
-
-**One instance per token, and that's all.** No scopes, no transient lifetimes, no child injectors, no async
-resolution, no multi-providers. If you need those, [brandi](https://www.npmjs.com/package/brandi) is the
-better tool.
-
-**Keep one copy in the tree.** Two majors installed side by side — a library pinning an older range — is not
-supported. Check with `npm ls inject-braid`, force one copy with `overrides` / `resolutions`.
-
 ## Requirements
 
 Node 22+, Bun, Deno, or any current browser. Nothing from `node:*`. ESM and CJS both shipped. `vue` and
