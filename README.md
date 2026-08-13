@@ -103,6 +103,40 @@ binding's decision. What's here is the container and the token types:
 Useful for the code that owns request lifecycle — an SSR entry making one container per request, or a test
 harness — without dragging react or vue into that module's graph.
 
+## overriding a library's services
+
+The case this is built for: a library ships `inject(CartService, () => new CartService())` at its call sites,
+and a project swaps in its own implementation without the library knowing. `provide` the replacement before
+anything resolves — in bootstrap, and under SSR once per request.
+
+```ts
+// vue — inside the app's own injection context, right after the plugin
+app.use(createProviders())
+app.runWithContext(() => {
+  provide(CartService, new TenantCartService())
+  provide('ApiContext', { siteId: () => 'outlet' })
+})
+```
+
+```ts
+// react — on the request's container, before render
+const container = createContainer()
+runInContainer(container, () => {
+  provide(CartService, new TenantCartService())
+})
+render(<ContainerProvider container={container}>{app}</ContainerProvider>)
+```
+
+Same shape in tests: build a container (or an app) per test and `provide` mocks into it, so nothing leaks
+between cases.
+
+Order is the only rule. A `provide` after something already resolved the default overwrites the registry, but
+every holder that captured the earlier instance keeps it — half the app on each. That case warns, naming the
+token.
+
+Overriding a *token* rather than a class works the same way and is what to prefer across a package boundary,
+since class tokens key off `name` and a minifier can rewrite it.
+
 ## Things that will bite you
 
 **Primitives count as absent.** `provide('flag', false)` then `inject('flag', true)` returns `true`. A stored
