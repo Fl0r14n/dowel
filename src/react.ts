@@ -1,0 +1,42 @@
+/** React binding. React has no injection context of its own, so the registry is the explicit per-request
+ * {@link Container} from `container.ts`, reached two ways: through React context inside components, and
+ * through the ambient active container everywhere else (service factories, guards, loaders).
+ *
+ * `createElement` rather than JSX so this file needs no JSX build step. */
+
+import { createContext, createElement, type ReactNode, useContext } from 'react'
+import { type Container, containerRegistry, runInContainer } from './container'
+import { createInjector, type Injector } from './injector'
+import type { ProviderToken } from './token'
+
+const injector: Injector = createInjector(containerRegistry)
+
+export const provide: Injector['provide'] = injector.provide
+export const inject: Injector['inject'] = injector.inject
+
+const ContainerContext = createContext<Container | undefined>(undefined)
+
+export interface ContainerProviderProps {
+  container: Container
+  children?: ReactNode
+}
+
+/** Holds the per-request {@link Container}. Must wrap the whole tree — on SSR every request gets its own,
+ * which is what keeps carts, sessions and locales from leaking between concurrent renders. */
+export const ContainerProvider = ({ container, children }: ContainerProviderProps): ReactNode =>
+  createElement(ContainerContext.Provider, { value: container }, children)
+
+export const useContainer = (): Container => {
+  const container = useContext(ContainerContext)
+  if (!container) {
+    throw new Error('[inject-braid]: no container in context — wrap the tree in <ContainerProvider>')
+  }
+  return container
+}
+
+/** `inject` against the container in React context. Same lazy-default contract as the bare `inject`: a
+ * factory is resolved and stored on first use, so repeated renders share one instance. */
+export const useService = <T>(token: ProviderToken<T>, defaultValue?: T | (() => T)): T => {
+  const container = useContainer()
+  return runInContainer(container, () => inject(token, defaultValue))
+}

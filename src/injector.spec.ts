@@ -1,0 +1,77 @@
+import { describe, expect, it, vi } from 'vitest'
+import { containerRegistry, createContainer, runInContainer } from './container'
+import { createInjector, isVacant, type Registry } from './injector'
+
+// the real conformance suite is vue-y's `core/di.spec.ts` + react-y's `core/di.spec.tsx`, which move here
+// on migration — these are scaffold-level checks that the split itself is wired up
+
+const injectorOver = (providers: Registry = new Map()) => ({ providers, ...createInjector(() => providers) })
+
+abstract class Service {
+  value!: string
+}
+
+const vacancyCases: [value: any, vacant: boolean][] = [
+  [undefined, true],
+  [null, true],
+  ['', true],
+  [0, true],
+  ['x', true],
+  [{}, true],
+  [{ a: 1 }, false],
+  [new Map(), false]
+]
+
+describe('isVacant', () => {
+  it.each(vacancyCases)('%o -> %s', (value, expected) => expect(isVacant(value)).toBe(expected))
+
+  it('treats a class instance as present despite having no own keys', () => {
+    class Impl extends Service {
+      override value = 'x'
+    }
+    // methods on the prototype, not own keys — the empty-plain-object rule must not catch this
+    expect(isVacant(new (class extends Impl {})())).toBe(false)
+  })
+})
+
+describe('createInjector', () => {
+  it('resolves a string token round-trip', () => {
+    const { provide, inject } = injectorOver()
+    provide('answer', 42)
+    expect(inject<number>('answer')).toBe(42)
+  })
+
+  it('keys a class token by its name', () => {
+    const { providers, provide } = injectorOver()
+    provide(Service, { value: 'x' })
+    expect(providers.get('Service')).toEqual({ value: 'x' })
+  })
+
+  it('invokes a factory default once and memoises it', () => {
+    const { inject } = injectorOver()
+    const factory = vi.fn(() => ({ value: 'built' }))
+    expect(inject(Service, factory).value).toBe('built')
+    expect(inject(Service, factory).value).toBe('built')
+    expect(factory).toHaveBeenCalledTimes(1)
+  })
+
+  it('prefers a provided value over the factory default', () => {
+    const { provide, inject } = injectorOver()
+    const factory = vi.fn(() => ({ value: 'built' }))
+    provide(Service, { value: 'given' })
+    expect(inject(Service, factory).value).toBe('given')
+    expect(factory).not.toHaveBeenCalled()
+  })
+})
+
+describe('runInContainer', () => {
+  it('isolates registries per container and restores the previous one', () => {
+    const { inject } = createInjector(containerRegistry)
+    const a = createContainer()
+    const b = createContainer()
+    runInContainer(a, () => inject('token', () => 'a'))
+    runInContainer(b, () => inject('token', () => 'b'))
+    expect(a.providers.get('token')).toBe('a')
+    expect(b.providers.get('token')).toBe('b')
+  })
+})

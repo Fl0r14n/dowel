@@ -1,0 +1,30 @@
+name: publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # the OIDC token npm exchanges for publish rights
+
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org # still needed: it points npm at the registry
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: bun run build
+      - run: bun run smoke
+      # trusted publishing needs npm >= 11.5.1; node 24 ships 11.x but the exact patch drifts
+      - run: npm install -g npm@latest
+      # no NODE_AUTH_TOKEN: the trusted publisher registered on npmjs.com exchanges the OIDC
+      # token above for publish rights, and provenance comes with it. bun publish cannot do this.
+      - run: npm publish --access public
