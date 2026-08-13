@@ -2,12 +2,16 @@
  * therefore one per request under SSR — with no ambient global involved. */
 
 import { type App, hasInjectionContext, type InjectionKey, inject as vueInject } from 'vue'
-import { createInjector, type Injector, type Registry } from './injector'
+import { createInjector, type Injector, type Registry } from '../injector'
 
 /** `Symbol.for`, not `Symbol`: a bare `Symbol('providers')` is minted fresh on every module evaluation, so
  * two evaluated copies of this module hold two distinct keys — the map installed by one copy is invisible
- * to the other and every resolve throws. See the matching note in `container.ts`. */
-const PROVIDERS = Symbol.for('inject-braid.providers.v1') as InjectionKey<Registry>
+ * to the other and every resolve throws. See the matching note in `container.ts`.
+ *
+ * Unversioned, unlike the active-container key: what lives here is a bare `Map<string, any>`, which has no
+ * shape to be incompatible about. Two majors sharing this key resolve each other's services, which is
+ * strictly better than each installing a registry the other cannot see. */
+const PROVIDERS = Symbol.for('inject-braid.providers') as InjectionKey<Registry>
 
 export interface ProvidersPlugin {
   install: (app: App) => void

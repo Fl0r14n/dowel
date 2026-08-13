@@ -2,8 +2,8 @@
 
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createContainer, runInContainer } from './container'
-import { ContainerProvider, inject, provide, useService } from './react'
+import { createContainer, runInContainer } from '../container'
+import { ContainerProvider, inject, provide, useService } from '.'
 
 afterEach(cleanup)
 

@@ -5,9 +5,9 @@
  * `createElement` rather than JSX so this file needs no JSX build step. */
 
 import { createContext, createElement, type ReactNode, useContext } from 'react'
-import { type Container, containerRegistry, runInContainer } from './container'
-import { createInjector, type Injector } from './injector'
-import type { ProviderToken } from './token'
+import { type Container, containerRegistry, runInContainer } from '../container'
+import { createInjector, type Injector } from '../injector'
+import type { ProviderToken } from '../token'
 
 const injector: Injector = createInjector(containerRegistry)
 

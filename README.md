@@ -109,9 +109,14 @@ resolves; it breaks only at runtime.
 2. **A module-level `let active`** duplicates the same way, but resolution then falls through to the shared
    fallback map instead of throwing. Silent, and under SSR that shared map is cross-request leakage.
 
-Hence `Symbol.for('inject-braid.providers.v1')` and a `globalThis`-held active slot, both keyed by major
-version: two incompatible majors should *not* share a registry, and a loud mismatch beats silent
-misbehaviour.
+Hence `Symbol.for('inject-braid.providers')` for the vue registry key, and a `globalThis`-held active slot
+under `Symbol.for('inject-braid.active.v1')`.
+
+Only one of the two carries a version, and the asymmetry is deliberate. The vue key holds a bare
+`Map<string, any>` — no shape to be incompatible about, so two majors sharing it resolve each other's
+services, which beats each installing a registry the other cannot see. The active slot holds a `Container`,
+whose shape can gain fields in a future major; versioning it keeps v2 from reading a v1-written container and
+finding it malformed.
 
 ## What this deliberately is not
 

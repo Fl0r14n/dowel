@@ -22,8 +22,10 @@ interface ActiveState {
  * silent — resolution falls through to `fallback` instead of throwing — and a shared fallback map under
  * SSR is cross-request state leakage. Realm-global by design.
  *
- * The `.v1` suffix is deliberate: two incompatible majors should *not* share a registry, and a loud
- * mismatch beats silent misbehaviour. */
+ * The `.v1` suffix earns its keep here, and only here: this slot holds a `Container`, and a future major
+ * that adds a required field to it would otherwise read v1-written containers out of the shared slot and
+ * find them malformed. The vue providers key is unversioned for exactly the opposite reason — see the note
+ * there. Nothing enforces bumping this on a major; it is a comment-and-remember contract. */
 const ACTIVE = Symbol.for('inject-braid.active.v1')
 
 const globals = globalThis as unknown as Record<symbol, ActiveState | undefined>

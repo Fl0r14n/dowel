@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createApp } from 'vue'
-import { createProviders, inject, provide } from './vue'
+import { createProviders, inject, provide } from '.'
 
 // The registry lives on the app, so every call needs an injection context — there is no module-level map
 // to fall back on. `run` is what a component setup, a pinia store setup or a navigation guard supplies.
