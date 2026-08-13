@@ -63,6 +63,56 @@ describe('createInjector', () => {
     expect(factory).not.toHaveBeenCalled()
   })
 
+  describe('providing after a default has already been resolved', () => {
+    it('warns, because holders of the earlier instance keep it', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const { provide, inject } = injectorOver()
+
+      const captured = inject(Service, () => ({ value: 'default' }))
+      provide(Service, { value: 'override' })
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Service had already been resolved'))
+      // the split this warns about, spelled out
+      expect(captured.value).toBe('default')
+      expect(inject(Service).value).toBe('override')
+      warn.mockRestore()
+    })
+
+    it('stays quiet when the provide lands first', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const { provide, inject } = injectorOver()
+
+      provide(Service, { value: 'override' })
+      expect(inject(Service, () => ({ value: 'default' })).value).toBe('override')
+
+      expect(warn).not.toHaveBeenCalled()
+      warn.mockRestore()
+    })
+
+    it('stays quiet when overwriting an explicit provide', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const { provide } = injectorOver()
+
+      provide(Service, { value: 'first' })
+      provide(Service, { value: 'second' })
+
+      expect(warn).not.toHaveBeenCalled()
+      warn.mockRestore()
+    })
+
+    it('tracks per registry, so one request does not warn about another', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const first = injectorOver()
+      const second = injectorOver()
+
+      first.inject(Service, () => ({ value: 'default' }))
+      second.provide(Service, { value: 'override' })
+
+      expect(warn).not.toHaveBeenCalled()
+      warn.mockRestore()
+    })
+  })
+
   describe('circular dependencies', () => {
     it('names the cycle instead of exhausting the stack', () => {
       const { inject } = injectorOver()

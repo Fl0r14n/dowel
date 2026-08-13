@@ -22,6 +22,9 @@ Override it by providing first:
 provide(CartService, new MockCartService())
 ```
 
+Do it before anything resolves, typically in bootstrap. Provide later and the registry takes the new value,
+but whatever already captured the default keeps it — you get a warning naming the token when that happens.
+
 Tokens are strings or classes. An abstract class is both the runtime key (its `name`) and the compile-time
 type (its `prototype`), so a service needs no separate interface and token:
 

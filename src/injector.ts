@@ -19,10 +19,26 @@ export interface Injector {
  * second registry for the same key is the cycle we want to catch anyway. */
 const resolving = new Set<string>()
 
+/** Per registry, the keys that a factory default filled in. Providing over one of those is the override that
+ * arrived too late: the map takes the new value, but every holder that already captured the default keeps it,
+ * so the app runs half on each. Keyed weakly so a finished request's registry is still collectable. */
+const fromFactory = new WeakMap<Registry, Set<string>>()
+
 export const createInjector = (registry: () => Registry): Injector => {
   const provide = <T>(token: ProviderToken<T>, value: T): void => {
     const key = injectionKey(token)
-    if (key) registry().set(key, value)
+    if (!key) return
+    const providers = registry()
+    const filled = fromFactory.get(providers)
+    if (filled?.has(key)) {
+      console.warn(
+        `[inject-braid]: ${key} had already been resolved from its default when it was provided. Anything ` +
+          'that captured the earlier instance keeps it — provide before the first resolve, typically in bootstrap.'
+      )
+      // now explicitly provided; a second provide over it is deliberate and says nothing new
+      filled.delete(key)
+    }
+    providers.set(key, value)
   }
 
   const inject = <T>(token: ProviderToken<T>, defaultValue?: T | (() => T)): T => {
@@ -42,6 +58,9 @@ export const createInjector = (registry: () => Registry): Injector => {
       try {
         const resolved = typeof defaultValue === 'function' ? (defaultValue as () => T)() : defaultValue
         providers.set(key, resolved)
+        const filled = fromFactory.get(providers)
+        if (filled) filled.add(key)
+        else fromFactory.set(providers, new Set([key]))
         return resolved
       } finally {
         // `finally`, so a factory that throws for its own reasons does not leave its key marked and turn the
