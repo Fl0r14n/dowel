@@ -30,17 +30,13 @@ export interface ContainerProviderProps {
 export const ContainerProvider = ({ container, children }: ContainerProviderProps): ReactNode =>
   createElement(ContainerContext.Provider, { value: container }, children)
 
-export const useContainer = (): Container => {
+/** `inject` against the container in React context — the component-side door, since render never runs inside
+ * `runInContainer` and so has no ambient container to read. Same lazy-default contract as the bare `inject`:
+ * a factory is resolved and stored on first use, so repeated renders share one instance. */
+export const useService = <T>(token: ProviderToken<T>, defaultValue?: T | (() => T)): T => {
   const container = useContext(ContainerContext)
   if (!container) {
     throw new Error('[inject-braid]: no container in context — wrap the tree in <ContainerProvider>')
   }
-  return container
-}
-
-/** `inject` against the container in React context. Same lazy-default contract as the bare `inject`: a
- * factory is resolved and stored on first use, so repeated renders share one instance. */
-export const useService = <T>(token: ProviderToken<T>, defaultValue?: T | (() => T)): T => {
-  const container = useContainer()
   return runInContainer(container, () => inject(token, defaultValue))
 }

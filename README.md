@@ -85,7 +85,6 @@ working right up until SSR, where it is one request resolving another request's 
 | --- | --- |
 | `ContainerProvider` | holds the per-request container for the tree |
 | `useService(token, default?)` | resolve against the container in React context |
-| `useContainer()` | the container itself |
 | `provide`, `inject` | resolve against the bound container, for non-component code |
 | `createContainer`, `runInContainer` | re-exported from the core, so one import site |
 
