@@ -62,6 +62,47 @@ describe('createInjector', () => {
     expect(inject(Service, factory).value).toBe('given')
     expect(factory).not.toHaveBeenCalled()
   })
+
+  describe('circular dependencies', () => {
+    it('names the cycle instead of exhausting the stack', () => {
+      const { inject } = injectorOver()
+      // a's factory needs b, b's needs a — and nothing is stored until a factory returns
+      const a = (): any => ({ b: inject('b', b) })
+      const b = (): any => ({ a: inject('a', a) })
+
+      expect(() => inject('a', a)).toThrow('[inject-braid]: circular dependency: a → b → a')
+    })
+
+    it('catches a token that depends on itself', () => {
+      const { inject } = injectorOver()
+      const self = (): any => ({ again: inject('self', self) })
+
+      expect(() => inject('self', self)).toThrow('circular dependency: self → self')
+    })
+
+    it('does not leave a key marked when a factory throws for its own reasons', () => {
+      const { inject } = injectorOver()
+
+      expect(() =>
+        inject('flaky', () => {
+          throw new Error('boom')
+        })
+      ).toThrow('boom')
+
+      // a second attempt must be a fresh resolve, not a phantom cycle
+      expect(inject('flaky', () => 'built')).toBe('built')
+    })
+
+    it('leaves sibling resolves alone', () => {
+      const { inject } = injectorOver()
+      // one factory resolving another, not circular — must not trip the guard
+      const inner = () => 'inner'
+      const outer = () => `outer+${inject('inner', inner)}`
+
+      expect(inject('outer', outer)).toBe('outer+inner')
+      expect(inject<string>('inner')).toBe('inner')
+    })
+  })
 })
 
 describe('runInContainer', () => {

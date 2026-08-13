@@ -14,6 +14,11 @@ export interface Injector {
   inject: <T>(token: ProviderToken<T>, defaultValue?: T | (() => T)) => T
 }
 
+/** Keys whose factory is running right now, in call order. Module-level and shared across injectors: a
+ * resolve chain is synchronous, so it cannot interleave with another one, and a factory that reaches into a
+ * second registry for the same key is the cycle we want to catch anyway. */
+const resolving = new Set<string>()
+
 export const createInjector = (registry: () => Registry): Injector => {
   const provide = <T>(token: ProviderToken<T>, value: T): void => {
     const key = injectionKey(token)
@@ -28,9 +33,21 @@ export const createInjector = (registry: () => Registry): Injector => {
     // truthiness on `defaultValue`, not `!== undefined`: parity with the vue-y/react-y implementations
     // this replaces, where a falsy default is deliberately ignored
     if (defaultValue && isVacant(value)) {
-      const resolved = typeof defaultValue === 'function' ? (defaultValue as () => T)() : defaultValue
-      providers.set(key, resolved)
-      return resolved
+      // the resolved value is stored *after* the factory returns, so a cycle would recurse until the stack
+      // gave out — `RangeError` with none of the token names in it
+      if (resolving.has(key)) {
+        throw new Error(`[inject-braid]: circular dependency: ${[...resolving, key].join(' → ')}`)
+      }
+      resolving.add(key)
+      try {
+        const resolved = typeof defaultValue === 'function' ? (defaultValue as () => T)() : defaultValue
+        providers.set(key, resolved)
+        return resolved
+      } finally {
+        // `finally`, so a factory that throws for its own reasons does not leave its key marked and turn the
+        // next attempt into a phantom cycle
+        resolving.delete(key)
+      }
     }
     return value as T
   }
