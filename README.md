@@ -100,7 +100,7 @@ binding's decision. What's here is the container and the token types:
 Useful for the code that owns request lifecycle — an SSR entry making one container per request, or a test
 harness — without dragging react or vue into that module's graph.
 
-## Three things that will bite you
+## Things that will bite you
 
 **Primitives count as absent.** `provide('flag', false)` then `inject('flag', true)` returns `true`. A stored
 value is replaced by your default when it is nullish, a primitive, or an empty plain object — a class instance
@@ -112,6 +112,27 @@ can collide. Use string tokens across package boundaries, class tokens for app-l
 **One instance per token, and that's all.** No scopes, no transient lifetimes, no child injectors, no async
 resolution, no multi-providers. If you need those, [brandi](https://www.npmjs.com/package/brandi) is the
 better tool.
+
+**Keep one copy in the tree.** If two packages depend on different majors, your installer nests them and both
+evaluate in the same process:
+
+```
+node_modules/
+  inject-braid/                 ← 2.0.0   the app depends on ^2
+  some-ui-lib/
+    node_modules/
+      inject-braid/             ← 1.4.0   some-ui-lib depends on ^1
+```
+
+The registry keys are `Symbol.for`-based and the active-container slot hangs off `globalThis`, so the two
+copies do find each other rather than silently splitting — but they are still two module instances resolving
+against each other's state, and only one of them is the version you upgraded. Under vue, both copies share the
+one providers map, which mostly works. Under react, only the copy whose `runInContainer` bound the container
+sees it; the other throws `no active container` from somewhere you never suspected.
+
+Check with `npm ls inject-braid` or `bun pm ls | grep inject-braid`, and fix it at the source — align the range
+in the library, or force one copy with `overrides` (npm) / `resolutions` (bun, yarn). Two copies is not a
+configuration this package supports.
 
 ## Requirements
 

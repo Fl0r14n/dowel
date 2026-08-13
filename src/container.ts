@@ -18,10 +18,11 @@ interface ActiveState {
  * versions, a nested install, a bundler that fails to dedupe) would otherwise each hold their own `active`,
  * so `runInContainer` in one copy is invisible to `inject` in the other. Realm-global by design.
  *
- * The `.v1` suffix earns its keep here, and only here: this slot holds a `Container`, and a future major that
- * adds a required field to it would otherwise read v1-written containers out of the shared slot and find them
- * malformed. The vue providers key is unversioned for exactly the opposite reason — see the note there.
- * Nothing enforces bumping this on a major; it is a comment-and-remember contract. */
+ * That covers double evaluation of one version, which is the case that actually happens. Two *different*
+ * majors in one process — a nested install where some library pins the older range — is a configuration this
+ * package does not support; the readme says so and says how to check. The `.v1` suffix only makes that case
+ * fail loudly instead of letting v1 read a container v2 wrote: worth the six characters, not worth building
+ * around. Nothing enforces bumping it on a major; it is a comment-and-remember contract. */
 const ACTIVE = Symbol.for('inject-braid.active.v1')
 
 const globals = globalThis as unknown as Record<symbol, ActiveState | undefined>
