@@ -64,7 +64,7 @@ describe('react binding, outside components', () => {
       })
     })
 
-    it('ignores the default when the key holds a non-empty object', () => {
+    it('ignores the default when the token was provided', () => {
       const existingValue = { existing: true }
 
       inContainer(() => {
@@ -74,14 +74,12 @@ describe('react binding, outside components', () => {
       })
     })
 
-    // documents current behaviour: a value with no own keys (primitive, empty object) counts as vacant and
-    // is overwritten by a supplied default
-    it('overwrites primitives and empty objects with the default', () => {
+    it('keeps a provided primitive rather than letting a default overwrite it', () => {
       inContainer(() => {
         provide('primitive-token', 123)
 
-        expect(inject('primitive-token', 456)).toBe(456)
-        expect(inject('primitive-token')).toBe(456)
+        expect(inject('primitive-token', 456)).toBe(123)
+        expect(inject('primitive-token')).toBe(123)
       })
     })
 
@@ -172,7 +170,7 @@ const Consumer = () => {
 describe('useService', () => {
   it('resolves the value provided on the container in context', () => {
     const container = createContainer()
-    container.providers.set('Greeter', new Greeter('provided'))
+    container.providers.set(Greeter, new Greeter('provided'))
 
     render(
       <ContainerProvider container={container}>
@@ -185,9 +183,9 @@ describe('useService', () => {
 
   it('keeps two containers isolated — the SSR per-request guarantee', () => {
     const first = createContainer()
-    first.providers.set('Greeter', new Greeter('first'))
+    first.providers.set(Greeter, new Greeter('first'))
     const second = createContainer()
-    second.providers.set('Greeter', new Greeter('second'))
+    second.providers.set(Greeter, new Greeter('second'))
 
     render(
       <>
@@ -215,7 +213,7 @@ describe('useService', () => {
       </ContainerProvider>
     )
     expect(factory).toHaveBeenCalledTimes(1)
-    expect(container.providers.get('Greeter').greeting).toBe('lazy')
+    expect(container.providers.get(Greeter).greeting).toBe('lazy')
   })
 
   it('throws without a provider rather than silently using a global', () => {

@@ -9,5 +9,5 @@ export type { Registry } from './injector'
 export type { AbstractType, ProviderToken, Type } from './token'
 
 // Deliberately not public: `createInjector` and `containerRegistry` (the seam the two bindings are built on),
-// `isVacant` (`inject`'s overwrite policy), `injectionKey` (its key derivation). Nothing outside the package
-// needs them, and a third binding belongs in here rather than in a consumer.
+// `tokenName` (message formatting only). Nothing outside the package needs them, and a third binding belongs
+// in here rather than in a consumer.

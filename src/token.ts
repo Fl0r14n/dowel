@@ -10,5 +10,6 @@ export interface Type<T> {
 
 export type ProviderToken<T> = Type<T> | AbstractType<T> | string
 
-export const injectionKey = <T>(token: ProviderToken<T>): string | undefined =>
-  (typeof token === 'string' ? token : token.name) || undefined
+/** For messages only — never a registry key. A minifier rewrites a class's `name`, so two tokens from
+ * different chunks routinely both report `b`; the registry keys on token identity instead. */
+export const tokenName = <T>(token: ProviderToken<T>): string => (typeof token === 'string' ? token : token.name) || '<anonymous>'

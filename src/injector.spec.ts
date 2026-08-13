@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { containerRegistry, createContainer, runInContainer } from './container'
-import { createInjector, isVacant, type Registry } from './injector'
+import { createInjector, type Registry } from './injector'
 
 // the real conformance suite is vue-y's `core/di.spec.ts` + react-y's `core/di.spec.tsx`, which move here
 // on migration — these are scaffold-level checks that the split itself is wired up
@@ -11,28 +11,9 @@ abstract class Service {
   value!: string
 }
 
-const vacancyCases: [value: any, vacant: boolean][] = [
-  [undefined, true],
-  [null, true],
-  ['', true],
-  [0, true],
-  ['x', true],
-  [{}, true],
-  [{ a: 1 }, false],
-  [new Map(), false]
-]
-
-describe('isVacant', () => {
-  it.each(vacancyCases)('%o -> %s', (value, expected) => expect(isVacant(value)).toBe(expected))
-
-  it('treats a class instance as present despite having no own keys', () => {
-    class Impl extends Service {
-      override value = 'x'
-    }
-    // methods on the prototype, not own keys — the empty-plain-object rule must not catch this
-    expect(isVacant(new (class extends Impl {})())).toBe(false)
-  })
-})
+/** What a minifier produces: distinct tokens from different chunks, each rewritten to the same short
+ * identifier, so `name` no longer tells them apart. */
+const mangled = <T>(token: T, name: string): T => Object.defineProperty(token, 'name', { value: name })
 
 describe('createInjector', () => {
   it('resolves a string token round-trip', () => {
@@ -41,10 +22,79 @@ describe('createInjector', () => {
     expect(inject<number>('answer')).toBe(42)
   })
 
-  it('keys a class token by its name', () => {
+  it('keys a class token by identity, not by name', () => {
     const { providers, provide } = injectorOver()
     provide(Service, { value: 'x' })
-    expect(providers.get('Service')).toEqual({ value: 'x' })
+    expect(providers.get(Service)).toEqual({ value: 'x' })
+    expect(providers.get('Service')).toBeUndefined()
+  })
+
+  describe('tokens that share a name', () => {
+    it('keeps them apart', () => {
+      const { provide, inject } = injectorOver()
+      const First = mangled(class extends Service {}, 'b')
+      const Second = mangled(class extends Service {}, 'b')
+
+      provide(First, { value: 'first' })
+      provide(Second, { value: 'second' })
+
+      expect(inject(First).value).toBe('first')
+      expect(inject(Second).value).toBe('second')
+    })
+
+    it('does not let one satisfy the other, skipping its factory', () => {
+      const { provide, inject } = injectorOver()
+      const Provided = mangled(class extends Service {}, 'b')
+      const Other = mangled(class extends Service {}, 'b')
+      const factory = vi.fn(() => ({ value: 'own' }))
+
+      provide(Provided, { value: 'provided' })
+
+      expect(inject(Other, factory).value).toBe('own')
+      expect(factory).toHaveBeenCalledTimes(1)
+    })
+
+    it('reads a cycle through them without claiming one that is not there', () => {
+      const { inject } = injectorOver()
+      const A = mangled(class extends Service {}, 'b')
+      const B = mangled(class extends Service {}, 'b')
+      // distinct tokens, so `A`'s factory resolving `B` is a sibling resolve, not a cycle
+      const inner = () => ({ value: 'inner' })
+      const outer = () => ({ value: `outer+${inject(B, inner).value}` })
+
+      expect(inject(A, outer).value).toBe('outer+inner')
+    })
+  })
+
+  describe('a provided value the default must not overwrite', () => {
+    // `has`, not truthiness: each of these reads as "absent" to any vacancy test, and losing to a default
+    // would also overwrite it in the registry
+    it.each([
+      ['zero', 0, 5],
+      ['empty string', '', 'fallback'],
+      ['false', false, true],
+      ['null', null, { value: 'x' }],
+      ['an empty object', {}, { value: 'x' }]
+    ])('keeps a provided %s', (_label, provided, fallback) => {
+      const { providers, provide, inject } = injectorOver()
+      provide('token', provided)
+
+      expect(inject('token', fallback)).toBe(provided)
+      expect(providers.get('token')).toBe(provided)
+    })
+
+    it('accepts a falsy default for a token that was never provided', () => {
+      const { inject } = injectorOver()
+      expect(inject('missing', 0)).toBe(0)
+      expect(inject<number>('missing')).toBe(0)
+    })
+  })
+
+  it('holds a function as a value when the factory returns it', () => {
+    const { inject } = injectorOver()
+    const transport = () => 'sent'
+    // a bare function default *is* the factory, so wrapping is how a function becomes the value
+    expect(inject('transport', () => transport)).toBe(transport)
   })
 
   it('invokes a factory default once and memoises it', () => {

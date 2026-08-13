@@ -74,7 +74,7 @@ describe('vue binding', () => {
       expect(run(() => inject('default-value-token'))).toBe(defaultValue)
     })
 
-    it('ignores the default when the key holds a non-empty object', () => {
+    it('ignores the default when the token was provided', () => {
       const run = appContext()
       const existingValue = { existing: true }
 
@@ -83,15 +83,13 @@ describe('vue binding', () => {
       expect(run(() => inject('existing-token', { default: true }))).toBe(existingValue)
     })
 
-    // documents current behaviour: a value with no own keys (primitive, empty object) counts as vacant and
-    // is overwritten by a supplied default
-    it('overwrites primitives and empty objects with the default', () => {
+    it('keeps a provided primitive rather than letting a default overwrite it', () => {
       const run = appContext()
 
       run(() => provide('primitive-token', 123))
 
-      expect(run(() => inject('primitive-token', 456))).toBe(456)
-      expect(run(() => inject('primitive-token'))).toBe(456)
+      expect(run(() => inject('primitive-token', 456))).toBe(123)
+      expect(run(() => inject('primitive-token'))).toBe(123)
     })
 
     it('invokes a factory default lazily, once, per app', () => {

@@ -14,7 +14,7 @@ export interface ProvidersPlugin {
 
 /** Install once per app — so once per request under SSR. */
 export const createProviders = (): ProvidersPlugin => ({
-  install: (app: App) => app.provide(PROVIDERS, new Map<string, any>())
+  install: (app: App) => app.provide(PROVIDERS, new Map() as Registry)
 })
 
 const injector: Injector = createInjector(() => {

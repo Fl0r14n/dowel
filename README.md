@@ -25,13 +25,30 @@ provide(Logger, new TestLogger())
 Do it before anything resolves, typically in bootstrap. Provide later and the registry takes the new value,
 but whatever already captured the default keeps it — you get a warning naming the token when that happens.
 
-Tokens are strings or classes. An abstract class is both the runtime key (its `name`) and the compile-time
-type (its `prototype`), so a service needs no separate interface and token:
+Tokens are strings or classes. An abstract class is both the runtime key and the compile-time type (its
+`prototype`), so a service needs no separate interface and token:
 
 ```ts
 export abstract class Logger {
   abstract log(message: string): void
 }
+```
+
+A class token keys on the class *itself*, never on its `name` — a minifier rewrites those, and two tokens from
+different chunks routinely both come out as `b`. Names appear only in warnings.
+
+A default applies when the token has never been provided — not when the stored value merely looks empty. A
+provided `0`, `''`, `false` or `{}` is a value the caller chose, and it stands:
+
+```ts
+provide('retries', 0)
+inject('retries', 3) // → 0
+```
+
+A function default *is* the factory, so wrap one to hold a function as the value:
+
+```ts
+inject('transport', () => fetchWithRetry) // → fetchWithRetry, not its return value
 ```
 
 Pick one of the three entries below. `inject-braid/vue` and `inject-braid/react` never pull each other into
@@ -143,8 +160,9 @@ Order is the only rule. A `provide` after something already resolved the default
 every holder that captured the earlier instance keeps it — half the app on each. That case warns, naming the
 token.
 
-Overriding a *token* rather than a class works the same way and is what to prefer across a package boundary,
-since class tokens key off `name` and a minifier can rewrite it.
+Overriding a string token works the same way. Either kind survives minification — a class token is matched by
+identity, so the override has to import the very class the library injects, which is the same thing a string
+token's spelling has to agree on.
 
 ## Requirements
 
