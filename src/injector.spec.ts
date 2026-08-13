@@ -93,6 +93,20 @@ describe('createInjector', () => {
       expect(inject('flaky', () => 'built')).toBe('built')
     })
 
+    it('catches a cycle entered through a provided value, not a factory', () => {
+      const { provide, inject } = injectorOver()
+      // `provide`'s argument is evaluated before the key is set, so a constructor that injects back into the
+      // cycle still recurses — the guard has to catch it from whichever factory it passes through
+      class B {
+        a = inject('a', () => new A())
+      }
+      class A {
+        b = inject('b', () => new B())
+      }
+
+      expect(() => provide('a', new A())).toThrow('[inject-braid]: circular dependency: b → a → b')
+    })
+
     it('leaves sibling resolves alone', () => {
       const { inject } = injectorOver()
       // one factory resolving another, not circular — must not trip the guard
