@@ -14,15 +14,12 @@ interface ActiveState {
   active?: Container
 }
 
-/** `Symbol.for` + `globalThis`, not a module-level `let`: two evaluated copies of this module (two installed
- * versions, a nested install, a bundler that fails to dedupe) would otherwise each hold their own `active`,
- * so `runInContainer` in one copy is invisible to `inject` in the other. Realm-global by design.
+/** `Symbol.for` + `globalThis`, not a module-level `let`: two evaluated copies of this module — a nested
+ * install, a bundler that fails to dedupe — would each hold their own `active`, so `runInContainer` in one is
+ * invisible to `inject` in the other. Realm-global by design.
  *
- * That covers double evaluation of one version, which is the case that actually happens. Two *different*
- * majors in one process — a nested install where some library pins the older range — is a configuration this
- * package does not support; the readme says so and says how to check. The `.v1` suffix only makes that case
- * fail loudly instead of letting v1 read a container v2 wrote: worth the six characters, not worth building
- * around. Nothing enforces bumping it on a major; it is a comment-and-remember contract. */
+ * `.v1` keeps two *different* majors out of one slot. That tree is unsupported anyway; the suffix only makes
+ * it throw instead of letting v1 read a container v2 wrote. Bump it on a major. */
 const ACTIVE = Symbol.for('inject-braid.active.v1')
 
 const globals = globalThis as unknown as Record<symbol, ActiveState | undefined>
