@@ -27,7 +27,10 @@ const existing = globals[ACTIVE]
 const state: ActiveState = existing ?? {}
 if (!existing) globals[ACTIVE] = state
 
-const activeContainer = (): Container | undefined => state.active
+/** The bound container, or `undefined`. The non-throwing peek: for code that must work both inside a request
+ * and outside one — reading a request url that falls back to `globalThis.location`, say — where `inject`'s
+ * throw is the wrong answer. */
+export const activeContainer = (): Container | undefined => state.active
 
 /** Binds `container` for the duration of a **synchronous** callback. Service factories only wire
  * dependencies, they never await, so concurrent SSR renders cannot interleave inside `fn` and steal each

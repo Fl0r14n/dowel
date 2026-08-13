@@ -4,7 +4,7 @@
  * Note this entry exports no bound `provide`/`inject` — which registry is in play is the binding's
  * decision, and a default here would resolve against the wrong one half the time. */
 
-export { type Container, createContainer, runInContainer } from './container'
+export { activeContainer, type Container, createContainer, runInContainer } from './container'
 export type { Registry } from './injector'
 export type { AbstractType, ProviderToken, Type } from './token'
 

@@ -86,7 +86,7 @@ working right up until SSR, where it is one request resolving another request's 
 | `ContainerProvider` | holds the per-request container for the tree |
 | `useService(token, default?)` | resolve against the container in React context |
 | `provide`, `inject` | resolve against the bound container, for non-component code |
-| `createContainer`, `runInContainer` | re-exported from the core, so one import site |
+| `createContainer`, `runInContainer`, `activeContainer` | re-exported from the core, so one import site |
 
 ## agnostic
 
@@ -97,6 +97,7 @@ binding's decision. What's here is the container and the token types:
 | --- | --- |
 | `createContainer()` | a `Container` — a `Map` of providers |
 | `runInContainer(container, fn)` | binds a container for a sync callback, restoring the previous one |
+| `activeContainer()` | the bound container or `undefined` — the peek that never throws |
 | `ProviderToken`, `Type`, `AbstractType`, `Registry`, `Container` | types |
 
 Useful for the code that owns request lifecycle — an SSR entry making one container per request, or a test
