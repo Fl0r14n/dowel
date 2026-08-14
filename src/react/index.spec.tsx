@@ -16,6 +16,13 @@ describe('react binding, outside components', () => {
     expect(() => provide('anything', { v: 1 })).toThrow('runInContainer')
   })
 
+  it('sends a component-side resolve to useService, since wrapping the tree would not help it', () => {
+    // this fires for a bare `inject` in a component body too — render never runs inside runInContainer, so
+    // <ContainerProvider> is not the fix there and the message must not claim it is
+    expect(() => inject('anything')).toThrow('useService')
+    expect(() => inject('anything')).not.toThrow('<ContainerProvider>')
+  })
+
   it('provides and injects a string token', () => {
     const value = { id: 1 }
 
@@ -134,7 +141,7 @@ describe('react binding, outside components', () => {
       const second = createContainer()
 
       runInContainer(first, () => provide('scoped-service', { app: 1 }))
-      expect(runInContainer(first, () => inject<{ app: number }>('scoped-service').app)).toBe(1)
+      expect(runInContainer(first, () => inject<{ app: number }>('scoped-service')!.app)).toBe(1)
       expect(runInContainer(second, () => inject('scoped-service'))).toBeUndefined()
       // and once the binding unwinds there is nowhere left to resolve against at all
       expect(() => inject('scoped-service')).toThrow('no active container')

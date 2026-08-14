@@ -6,17 +6,21 @@
 
 import { createContext, createElement, type ReactNode, useContext } from 'react'
 import { type Container, containerRegistry, runInContainer } from '../container'
-import { createInjector, type Injector } from '../injector'
+import { createInjector, type InjectFn, type Injector } from '../injector'
 import type { ProviderToken } from '../token'
 
 /** Re-exported so react-side code has one import site: a route loader reaching for `runInContainer` and a
  * component reaching for `useService` should not have to know which half of the package each lives in. */
 export { activeContainer, type Container, createContainer, runInContainer } from '../container'
 
-const injector: Injector = createInjector(containerRegistry)
+/** `useService`, not `<ContainerProvider>`, is the fix when this fires inside a component: render never runs
+ * inside `runInContainer`, so wrapping the tree does nothing for a bare `inject` in a component body. */
+const OFF_CONTAINER = 'inside components use useService(token, default), elsewhere bind one with runInContainer(createContainer(), fn)'
+
+const injector: Injector = createInjector(() => containerRegistry(OFF_CONTAINER))
 
 export const provide: Injector['provide'] = injector.provide
-export const inject: Injector['inject'] = injector.inject
+export const inject: InjectFn = injector.inject
 
 const ContainerContext = createContext<Container | undefined>(undefined)
 
@@ -32,11 +36,12 @@ export const ContainerProvider = ({ container, children }: ContainerProviderProp
 
 /** `inject` against the container in React context — the component-side door, since render never runs inside
  * `runInContainer` and so has no ambient container to read. Same lazy-default contract as the bare `inject`:
- * a factory is resolved and stored on first use, so repeated renders share one instance. */
-export const useService = <T>(token: ProviderToken<T>, defaultValue?: T | (() => T)): T => {
+ * a factory is resolved and stored on first use, so repeated renders share one instance. Same two signatures
+ * too — without a default an unprovided token is `undefined` here as well. */
+export const useService: InjectFn = (<T>(token: ProviderToken<T>, defaultValue?: T | (() => T)): T | undefined => {
   const container = useContext(ContainerContext)
   if (!container) {
     throw new Error('[inject-braid]: no container in context — wrap the tree in <ContainerProvider>')
   }
-  return runInContainer(container, () => inject(token, defaultValue))
-}
+  return runInContainer(container, () => (defaultValue === undefined ? inject(token) : inject(token, defaultValue)))
+}) as InjectFn

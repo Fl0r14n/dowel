@@ -26,8 +26,8 @@ runInContainer(a, () => inject('t', () => 'a'))
 runInContainer(b, () => inject('t', () => 'b'))
 check('containers isolated', a.providers.get('t') === 'a' && b.providers.get('t') === 'b')
 
-// the active slot hangs off `Symbol.for` + globalThis, so the esm and cjs halves of this very package share
-// it — that is the whole point, and requiring after importing is the cheapest way to prove it
+// this half only has to prove `require` resolves working exports. sharing the global slots between the esm and
+// cjs instances is proved in smoke.mjs, which can load both in one process — here there is only one
 check('vue binding exports', typeof createProviders === 'function' && typeof vProvide === 'function' && typeof vInject === 'function')
 
 process.exit((failed && 1) || 0)

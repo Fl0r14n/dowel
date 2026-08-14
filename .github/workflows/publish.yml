@@ -19,6 +19,17 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org # still needed: it points npm at the registry
+      # a release tag that disagrees with package.json either publishes a version nobody tagged or fails at the
+      # very last step, after the whole build. cheapest possible check, so it goes first
+      - name: release tag matches package.json
+        if: github.event_name == 'release'
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p 'require("./package.json").version')"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::release tag $GITHUB_REF_NAME implies $tag, package.json says $pkg"
+            exit 1
+          fi
       - run: bun install --frozen-lockfile
       - run: bun run check
       - run: bun run build

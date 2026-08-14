@@ -2,6 +2,7 @@
  * callback. This is the registry strategy for frameworks that give you no injection context of their own
  * (react); vue has `app.provide` and uses that instead — see `vue/index.ts`. */
 
+import { globalSlot } from './globals'
 import type { Registry } from './injector'
 
 export interface Container {
@@ -14,18 +15,9 @@ interface ActiveState {
   active?: Container
 }
 
-/** `Symbol.for` + `globalThis`, not a module-level `let`: two evaluated copies of this module — a nested
- * install, a bundler that fails to dedupe — would each hold their own `active`, so `runInContainer` in one is
- * invisible to `inject` in the other. Realm-global by design.
- *
- * `.v1` keeps two *different* majors out of one slot. That tree is unsupported anyway; the suffix only makes
- * it throw instead of letting v1 read a container v2 wrote. Bump it on a major. */
-const ACTIVE = Symbol.for('inject-braid.active.v1')
-
-const globals = globalThis as unknown as Record<symbol, ActiveState | undefined>
-const existing = globals[ACTIVE]
-const state: ActiveState = existing ?? {}
-if (!existing) globals[ACTIVE] = state
+/** Realm-global, not module-level: two evaluated copies of this module would each hold their own `active`, so
+ * `runInContainer` in one would be invisible to `inject` in the other. See `globals.ts`. */
+const state = globalSlot('inject-braid.active.v1', (): ActiveState => ({}))
 
 /** The bound container, or `undefined`. The non-throwing peek: for code that must work both inside a request
  * and outside one — reading a request url that falls back to `globalThis.location`, say — where `inject`'s
@@ -34,7 +26,12 @@ export const activeContainer = (): Container | undefined => state.active
 
 /** Binds `container` for the duration of a **synchronous** callback. Service factories only wire
  * dependencies, they never await, so concurrent SSR renders cannot interleave inside `fn` and steal each
- * other's container — which is exactly what an unrestored global would allow. */
+ * other's container — which is exactly what an unrestored global would allow.
+ *
+ * The binding ends when `fn` **returns**, which is the rule to hold on to when `fn` starts async work.
+ * Returning a promise is fine — `() => inject(Api).fetchUsers()` resolves its dependency synchronously and
+ * merely starts the request — but anything resolved *after* an `await` inside `fn` runs with the binding
+ * already unwound. Resolve first, await second. */
 export const runInContainer = <T>(container: Container, fn: () => T): T => {
   const previous = state.active
   state.active = container
@@ -49,13 +46,18 @@ export const runInContainer = <T>(container: Container, fn: () => T): T => {
  *
  * No fallback map. One shared registry for every unbound call reads as working — until SSR, where it is one
  * request resolving another request's services. Failing loudly at the first unbound resolve is the only
- * version of this that cannot leak. */
-export const containerRegistry = (): Registry => {
+ * version of this that cannot leak.
+ *
+ * `hint` is how a binding names its own door in the message. This module is framework-free and cannot advertise
+ * one — a core throw that told everyone to reach for a react component was advice half its callers could not
+ * follow, and the wrong advice for the caller it fired on most (a bare `inject` during render, which throws
+ * again once the tree *is* wrapped). */
+export const containerRegistry = (hint = 'bind one with runInContainer(createContainer(), fn)'): Registry => {
   const container = activeContainer()
   if (!container) {
     throw new Error(
-      '[inject-braid]: no active container — inside components wrap the tree in <ContainerProvider>, ' +
-        'elsewhere bind one with runInContainer(createContainer(), fn).'
+      `[inject-braid]: no active container — ${hint}. A binding also ends when its callback returns, so a ` +
+        'resolve that happens after an `await` inside runInContainer is already outside it.'
     )
   }
   return container.providers

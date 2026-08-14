@@ -2,11 +2,14 @@
  * therefore one per request under SSR — with no ambient global involved. */
 
 import { type App, hasInjectionContext, type InjectionKey, inject as vueInject } from 'vue'
-import { createInjector, type Injector, type Registry } from '../injector'
+import { createInjector, type InjectFn, type Injector, type Registry } from '../injector'
 
-/** `Symbol.for`, not `Symbol`: a bare `Symbol('providers')` is minted fresh on every module evaluation
- */
-const PROVIDERS = Symbol.for('inject-braid.providers') as InjectionKey<Registry>
+/** `Symbol.for`, not `Symbol`: a bare `Symbol('providers')` is minted fresh on every module evaluation, so two
+ * copies of this module would write and read different keys on the same app.
+ *
+ * `.v1` for the same reason the global slots carry it — one app installed by two different majors must miss
+ * each other's key rather than share a registry whose shape only one of them agrees with. Bump on a major. */
+const PROVIDERS = Symbol.for('inject-braid.providers.v1') as InjectionKey<Registry>
 
 export interface ProvidersPlugin {
   install: (app: App) => void
@@ -29,4 +32,4 @@ const injector: Injector = createInjector(() => {
 })
 
 export const provide: Injector['provide'] = injector.provide
-export const inject: Injector['inject'] = injector.inject
+export const inject: InjectFn = injector.inject

@@ -51,6 +51,12 @@ A function default *is* the factory, so wrap one to hold a function as the value
 inject('transport', () => fetchWithRetry) // → fetchWithRetry, not its return value
 ```
 
+Without a default, an unprovided token resolves to `undefined`, and the types say so — `inject(Logger)` is
+`Logger | undefined`, `inject(Logger, () => new ConsoleLogger())` is `Logger`.
+
+A falsy token throws instead of resolving. `undefined` at a call site is nearly always a circular import
+between the module defining the class and the one injecting it, and the error names that.
+
 Pick one of the three entries below. `inject-braid/vue` and `inject-braid/react` never pull each other into
 your bundle.
 
@@ -94,6 +100,24 @@ runInContainer(container, () => inject(Logger, () => new ConsoleLogger()))
 
 Synchronous on purpose: factories only wire dependencies, they never await, so concurrent SSR renders cannot
 interleave and steal each other's container.
+
+The binding ends when the callback **returns**. Returning a promise is fine — dependencies are resolved before
+the request starts:
+
+```ts
+runInContainer(container, () => inject(Api, () => new Api()).fetchUsers()) // ok
+```
+
+Resolving *after* an `await` inside the callback is not — by then the binding has unwound:
+
+```ts
+runInContainer(container, async () => {
+  await ready
+  return inject(Api) // throws: the binding ended when the callback returned its promise
+})
+```
+
+Resolve first, await second.
 
 With no container bound, resolving **throws**. There is no shared fallback registry — one would read as
 working right up until SSR, where it is one request resolving another request's services.
@@ -163,6 +187,10 @@ token.
 Overriding a string token works the same way. Either kind survives minification — a class token is matched by
 identity, so the override has to import the very class the library injects, which is the same thing a string
 token's spelling has to agree on.
+
+Identity means the *same class object*, so the module defining it must be a single copy in your graph. Two
+copies — a nested `node_modules`, a bundler resolving esm and cjs halves both — are two distinct objects, and
+then a `provide` writes a key nothing reads while the default quietly runs instead.
 
 ## Requirements
 

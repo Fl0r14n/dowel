@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { containerRegistry, createContainer, runInContainer } from './container'
+import { activeContainer, containerRegistry, createContainer, runInContainer } from './container'
 import { createInjector, type Registry } from './injector'
 
 // the real conformance suite is vue-y's `core/di.spec.ts` + react-y's `core/di.spec.tsx`, which move here
@@ -38,8 +38,8 @@ describe('createInjector', () => {
       provide(First, { value: 'first' })
       provide(Second, { value: 'second' })
 
-      expect(inject(First).value).toBe('first')
-      expect(inject(Second).value).toBe('second')
+      expect(inject(First)!.value).toBe('first')
+      expect(inject(Second)!.value).toBe('second')
     })
 
     it('does not let one satisfy the other, skipping its factory', () => {
@@ -63,6 +63,37 @@ describe('createInjector', () => {
       const outer = () => ({ value: `outer+${inject(B, inner).value}` })
 
       expect(inject(A, outer).value).toBe('outer+inner')
+    })
+  })
+
+  describe('a falsy token', () => {
+    // the one that reaches production: a circular import leaves a class token `undefined` at the call site.
+    // answering `undefined as T` there typechecked and threw a stack away from the cause
+    it.each([
+      ['undefined', undefined],
+      ['null', null]
+    ])('throws naming the circular import when injecting %s', (_label, token) => {
+      const { inject } = injectorOver()
+      expect(() => inject(token as any)).toThrow(/inject was given \w+ as its token/)
+      expect(() => inject(token as any)).toThrow('circular import')
+    })
+
+    it('throws when providing one, rather than storing nothing', () => {
+      const { provide, providers } = injectorOver()
+      expect(() => provide(undefined as any, 'v')).toThrow('provide was given undefined as its token')
+      expect(providers.size).toBe(0)
+    })
+
+    it('names an empty string token as such', () => {
+      const { inject, provide } = injectorOver()
+      expect(() => provide('', 'v')).toThrow('provide was given an empty string as its token')
+      expect(() => inject('')).toThrow('inject was given an empty string as its token')
+    })
+
+    it('reports the bad token before a missing container, since the token is the bug either way', () => {
+      const { inject } = createInjector(containerRegistry)
+      // no container is bound here, and the old order blamed that instead
+      expect(() => inject(undefined as any)).toThrow('inject was given undefined')
     })
   })
 
@@ -124,7 +155,7 @@ describe('createInjector', () => {
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('Service had already been resolved'))
       // the split this warns about, spelled out
       expect(captured.value).toBe('default')
-      expect(inject(Service).value).toBe('override')
+      expect(inject(Service)!.value).toBe('override')
       warn.mockRestore()
     })
 
@@ -207,6 +238,16 @@ describe('createInjector', () => {
       expect(() => provide('a', new A())).toThrow('[inject-braid]: circular dependency: b → a → b')
     })
 
+    it('flags the same token resolving through a second registry', () => {
+      // the resolve stack is deliberately not registry-scoped: a factory that reaches into another registry
+      // for the token it is already building is the shape the guard exists to name, whichever map it lands in.
+      // it is also what a cycle looks like when it crosses two copies of this package in one realm
+      const outer = injectorOver()
+      const inner = injectorOver()
+
+      expect(() => outer.inject('svc', () => inner.inject('svc', () => 'inner'))).toThrow('[inject-braid]: circular dependency: svc → svc')
+    })
+
     it('leaves sibling resolves alone', () => {
       const { inject } = injectorOver()
       // one factory resolving another, not circular — must not trip the guard
@@ -228,5 +269,40 @@ describe('runInContainer', () => {
     runInContainer(b, () => inject('token', () => 'b'))
     expect(a.providers.get('token')).toBe('a')
     expect(b.providers.get('token')).toBe('b')
+  })
+
+  it('ends the binding when the callback returns, so a post-await resolve is outside it', async () => {
+    const { inject } = createInjector(containerRegistry)
+    const c = createContainer()
+
+    // returning a promise is fine — this is the legitimate shape, dependencies resolved before the await
+    const started = runInContainer(c, () => {
+      const value = inject('svc', () => 'built')
+      return Promise.resolve(value)
+    })
+    expect(await started).toBe('built')
+
+    // awaiting *inside* is the trap, and the message has to own up to it
+    const late = runInContainer(c, async () => {
+      await Promise.resolve()
+      return inject('late', () => 'never')
+    })
+    await expect(late).rejects.toThrow('after an `await` inside runInContainer')
+    expect(c.providers.has('late')).toBe(false)
+  })
+})
+
+describe('activeContainer', () => {
+  it('peeks without throwing, and reports the innermost binding', () => {
+    const outer = createContainer()
+    const inner = createContainer()
+
+    expect(activeContainer()).toBeUndefined()
+    runInContainer(outer, () => {
+      expect(activeContainer()).toBe(outer)
+      runInContainer(inner, () => expect(activeContainer()).toBe(inner))
+      expect(activeContainer()).toBe(outer)
+    })
+    expect(activeContainer()).toBeUndefined()
   })
 })

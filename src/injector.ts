@@ -1,29 +1,46 @@
-import { type ProviderToken, tokenName } from './token'
+import { globalSlot } from './globals'
+import { assertToken, type ProviderToken, tokenName } from './token'
 
 /** Keyed by the token itself. A class's `name` is not stable — a minifier rewrites it, and two tokens from
  * different chunks then share one key and silently alias each other. Identity has no such failure mode. */
 export type Registry = Map<ProviderToken<any>, any>
 
-export interface Injector {
-  provide: <T>(token: ProviderToken<T>, value: T) => void
-  /** Resolves `token`. A `defaultValue` factory is invoked and **stored** on first use, so every later
-   * resolve returns the same instance — that memoisation is what makes a factory the service's lifecycle. */
-  inject: <T>(token: ProviderToken<T>, defaultValue?: T | (() => T)) => T
+/** Two signatures, because the guarantee differs. With a default the resolve cannot come up empty, so the
+ * result is `T`. Without one, an unprovided token resolves to `undefined` — and typing that as `T` was a lie
+ * the compiler happily propagated: `inject(Logger).log(...)` type-checked and then threw at runtime. */
+export type InjectFn = {
+  /** A `defaultValue` factory is invoked and **stored** on first use, so every later resolve returns the same
+   * instance — that memoisation is what makes a factory the service's lifecycle. */
+  <T>(token: ProviderToken<T>, defaultValue: T | (() => T)): T
+  /** No default: `undefined` when the token was never provided. */
+  <T>(token: ProviderToken<T>): T | undefined
 }
 
-/** Tokens whose factory is running right now, in call order. Module-level and shared across injectors: a
- * resolve chain is synchronous, so it cannot interleave with another one, and a factory that reaches into a
- * second registry for the same token is the cycle we want to catch anyway. */
-const resolving = new Set<ProviderToken<any>>()
+export interface Injector {
+  provide: <T>(token: ProviderToken<T>, value: T) => void
+  inject: InjectFn
+}
+
+/** Tokens whose factory is running right now, in call order. Shared across injectors *and* across copies of
+ * this module: a resolve chain is synchronous, so it cannot interleave with another one, and a factory that
+ * reaches into a second registry for the same token is the cycle we want to catch anyway. On the realm global
+ * for the same reason the active container is — a cycle that crosses two copies of the package should be named,
+ * not left to exhaust the stack in whichever copy runs out first. */
+const resolving = globalSlot('inject-braid.resolving.v1', () => new Set<ProviderToken<any>>())
 
 /** Per registry, the tokens that a factory default filled in. Providing over one of those is the override that
  * arrived too late: the map takes the new value, but every holder that already captured the default keeps it,
- * so the app runs half on each. Keyed weakly so a finished request's registry is still collectable. */
+ * so the app runs half on each. Keyed weakly so a finished request's registry is still collectable.
+ *
+ * Module-level, unlike the resolve stack: this only decides whether a warning fires, so the cost of two copies
+ * not sharing it is one missed warning, not a wrong resolve. Not worth a third realm-global slot. */
 const fromFactory = new WeakMap<Registry, Set<ProviderToken<any>>>()
 
 export const createInjector = (registry: () => Registry): Injector => {
   const provide = <T>(token: ProviderToken<T>, value: T): void => {
-    if (!token) return
+    // before `registry()`: a bad token is the caller's bug wherever they are, and reporting a missing
+    // container first would send them off to bind one that was never the problem
+    assertToken(token, 'provide')
     const providers = registry()
     const filled = fromFactory.get(providers)
     if (filled?.has(token)) {
@@ -37,9 +54,11 @@ export const createInjector = (registry: () => Registry): Injector => {
     providers.set(token, value)
   }
 
-  const inject = <T>(token: ProviderToken<T>, defaultValue?: T | (() => T)): T => {
+  // one implementation behind {@link InjectFn}'s two signatures — the cast is the standard price of an
+  // overloaded arrow, and the union it widens away is exactly what the second signature already promises
+  const inject = (<T>(token: ProviderToken<T>, defaultValue?: T | (() => T)): T | undefined => {
+    assertToken(token, 'inject')
     const providers = registry()
-    if (!token) return undefined as T
     // `has`, not a truthiness test on the stored value: a provided `0`, `''` or `false` is a value the caller
     // chose, and a default that overrode it would also overwrite it in the registry — silently, and for good
     if (defaultValue !== undefined && !providers.has(token)) {
@@ -62,8 +81,8 @@ export const createInjector = (registry: () => Registry): Injector => {
         resolving.delete(token)
       }
     }
-    return providers.get(token) as T
-  }
+    return providers.get(token) as T | undefined
+  }) as InjectFn
 
   return { provide, inject }
 }

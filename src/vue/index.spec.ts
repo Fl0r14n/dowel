@@ -143,12 +143,12 @@ describe('vue binding', () => {
       const b = appContext()
 
       a(() => provide('scoped-service', { app: 1 }))
-      expect(a(() => inject<{ app: number }>('scoped-service')).app).toBe(1)
+      expect(a(() => inject<{ app: number }>('scoped-service'))!.app).toBe(1)
 
       // b never saw it, despite both apps keying off the same `Symbol.for`
       expect(b(() => inject('scoped-service'))).toBeUndefined()
 
-      expect(a(() => inject<{ app: number }>('scoped-service')).app).toBe(1)
+      expect(a(() => inject<{ app: number }>('scoped-service'))!.app).toBe(1)
     })
 
     it('does not leak a provider written during one render into the next', () => {

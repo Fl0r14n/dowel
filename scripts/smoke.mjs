@@ -1,6 +1,7 @@
 /** Smoke test against the *built* output, not src — catches packaging faults the unit tests can't see:
  * a broken subpath export, a binding that fails to resolve its peer, a mangled token key. */
 
+import { createRequire } from 'node:module'
 import { createApp } from 'vue'
 import { createContainer, runInContainer } from '../dist/index.mjs'
 // deliberately taken off the react subpath, not the root: the binding re-exports the container surface so
@@ -44,9 +45,25 @@ runInContainer(a, () => rInject('t', () => 'a'))
 runInContainer(b, () => rInject('t', () => 'b'))
 check('containers isolated', a.providers.get('t') === 'a' && b.providers.get('t') === 'b')
 
-// the whole point of Symbol.for + globalThis: a second evaluated copy shares the active slot
-const copy = await import('../dist/index.mjs?copy=2')
-check('active slot shared across module copies', copy.runInContainer(a, () => rInject('t')) === 'a')
+// the whole point of Symbol.for + globalThis, and the only honest way to test it: `dist/index.mjs?copy=2`
+// re-evaluates the entry shell but its chunk import carries no query, so it resolves to the *same* container
+// module — that check proved nothing. The esm and cjs builds are different files, so they are genuinely two
+// module instances in one process, which is also the dual-package hazard a consumer actually hits.
+const cjs = createRequire(import.meta.url)('../dist/index.cjs')
+check('two module instances, not one', cjs.runInContainer !== runInContainer)
+check('active slot shared across them', cjs.runInContainer(a, () => rInject('t')) === 'a')
+check('and in the other direction', runInContainer(a, () => cjs.activeContainer()) === a)
+
+// the resolve stack is realm-global for the same reason: a cycle whose frames enter through different copies
+// must still be named, instead of exhausting the stack in whichever copy runs out first
+const cjsReact = createRequire(import.meta.url)('../dist/react.cjs')
+const crossed = createContainer()
+try {
+  runInContainer(crossed, () => rInject('crossed', () => cjsReact.runInContainer(crossed, () => cjsReact.inject('crossed', () => 'x'))))
+  check('cross-instance cycle named', false)
+} catch (error) {
+  check('cross-instance cycle named', error.message.includes('circular dependency: crossed → crossed'))
+}
 
 // --- vue path (registry on the app instance, no ambient global)
 const app = createApp({ render: () => null })
