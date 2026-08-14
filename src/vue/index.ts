@@ -1,7 +1,7 @@
 import { type App, hasInjectionContext, type InjectionKey, inject as vueInject } from 'vue'
 import { createInject, createProvide, type InjectFn, type ProvideFn, type Registry } from '../registry'
 
-const PROVIDERS = Symbol.for('inject-braid.providers.v1') as InjectionKey<Registry>
+const PROVIDERS = Symbol.for('dowel.providers.v1') as InjectionKey<Registry>
 
 export interface AppProviders {
   /** Under `providers` rather than on the app directly, since `app.provide` is vue's own. */
@@ -34,7 +34,7 @@ export const inject: InjectFn = createInject(() => {
   const providers = (hasInjectionContext() && vueInject(PROVIDERS, undefined)) || undefined
   if (!providers) {
     throw new Error(
-      '[inject-braid]: no provider registry — either this ran outside a vue injection context (resolve inside ' +
+      '[dowel]: no provider registry — either this ran outside a vue injection context (resolve inside ' +
         'a component setup, a store setup or a navigation guard), or `app.use(createProviders())` was never called.'
     )
   }

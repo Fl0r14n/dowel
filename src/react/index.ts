@@ -26,7 +26,7 @@ export const ContainerProvider = ({ container, children }: ContainerProviderProp
 const useContainer = (): Container => {
   const container = useContext(ContainerContext)
   if (!container) {
-    throw new Error('[inject-braid]: no container in context — wrap the tree in <ContainerProvider>')
+    throw new Error('[dowel]: no container in context — wrap the tree in <ContainerProvider>')
   }
   return container
 }

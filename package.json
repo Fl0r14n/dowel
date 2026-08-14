@@ -1,15 +1,15 @@
 {
-  "name": "inject-braid",
+  "name": "dowel",
   "version": "0.1.0",
   "description": "Tiny token-based DI with no registration step. Per-request containers, lazy defaults, vue and react bindings. Zero deps, SSR-safe.",
   "license": "MIT",
   "author": "Florian Chiș",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Fl0r14n/inject-braid.git"
+    "url": "git+https://github.com/Fl0r14n/dowel.git"
   },
-  "homepage": "https://github.com/Fl0r14n/inject-braid#readme",
-  "bugs": "https://github.com/Fl0r14n/inject-braid/issues",
+  "homepage": "https://github.com/Fl0r14n/dowel#readme",
+  "bugs": "https://github.com/Fl0r14n/dowel/issues",
   "keywords": [
     "di",
     "dependency-injection",

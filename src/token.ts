@@ -19,7 +19,7 @@ export const assertToken = <T>(token: ProviderToken<T>, operation: 'inject' | 'p
   if (token) return
   const received = token === '' ? 'an empty string' : String(token)
   throw new Error(
-    `[inject-braid]: ${operation} was given ${received} as its token. A class token that is \`undefined\` here is ` +
+    `[dowel]: ${operation} was given ${received} as its token. A class token that is \`undefined\` here is ` +
       'usually a circular import between the module that defines it and this one.'
   )
 }

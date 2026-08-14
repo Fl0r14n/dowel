@@ -9,7 +9,7 @@ afterEach(cleanup)
 
 describe('react binding, outside components', () => {
   it('throws when no container is bound rather than answering from a shared map', () => {
-    expect(() => inject('anything')).toThrow('[inject-braid]: no active container')
+    expect(() => inject('anything')).toThrow('[dowel]: no active container')
   })
 
   it('sends a component-side resolve to useService, since wrapping the tree would not help it', () => {

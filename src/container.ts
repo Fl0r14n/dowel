@@ -18,7 +18,7 @@ interface ActiveState {
  * module instances, and a binding made in one must be visible to a resolve in the other. */
 const state = ((): ActiveState => {
   const slots = globalThis as unknown as Record<symbol, ActiveState | undefined>
-  const slot = Symbol.for('inject-braid.active.v1')
+  const slot = Symbol.for('dowel.active.v1')
   const existing = slots[slot]
   if (existing) return existing
   const created: ActiveState = {}
@@ -43,7 +43,7 @@ export const containerRegistry = (hint = 'bind one with runInContainer(createCon
   const container = state.active
   if (!container) {
     throw new Error(
-      `[inject-braid]: no active container — ${hint}. A binding also ends when its callback returns, so a ` +
+      `[dowel]: no active container — ${hint}. A binding also ends when its callback returns, so a ` +
         'resolve that happens after an `await` inside runInContainer is already outside it.'
     )
   }

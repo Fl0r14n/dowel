@@ -95,7 +95,7 @@ that it survives and that a consumer importing only `dist/vue.mjs` still typeche
 ## the active container slot
 
 `container.ts` holds the only state outside a registry: a pointer to the bound container, on `globalThis` via
-`Symbol.for('inject-braid.active.v1')`.
+`Symbol.for('dowel.active.v1')`.
 
 Realm-global, not module-level, because the esm and cjs halves of this package are two module instances and a
 binding made in one must be visible to a resolve in the other. `scripts/smoke.mjs` proves this by loading both

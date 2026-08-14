@@ -34,7 +34,7 @@ export const createInject = (registry: () => Registry): InjectFn => {
     }
     if (required) {
       throw new Error(
-        `[inject-braid]: nothing provided ${tokenName(token)} and this resolve had no default. Provide it during ` +
+        `[dowel]: nothing provided ${tokenName(token)} and this resolve had no default. Provide it during ` +
           'bootstrap, pass a default — inject(token, () => new Thing()) — or use inject.optional(token) if absent is ' +
           'a valid answer.'
       )

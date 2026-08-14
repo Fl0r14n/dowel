@@ -114,7 +114,7 @@ describe('vue binding', () => {
   it('throws when resolving outside an injection context rather than answering from a global', () => {
     appContext() // an app exists, but we are not inside its context
 
-    expect(() => inject('anything')).toThrow('[inject-braid]: no provider registry')
+    expect(() => inject('anything')).toThrow('[dowel]: no provider registry')
   })
 
   it('throws inside a context whose app never installed the registry', () => {

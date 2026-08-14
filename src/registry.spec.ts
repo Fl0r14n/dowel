@@ -159,7 +159,7 @@ describe('createInject', () => {
   describe('a token nobody provided', () => {
     it('throws rather than answering undefined, and says how to say "maybe"', () => {
       const { inject } = bindingOver()
-      expect(() => inject('missing-service')).toThrow('[inject-braid]: nothing provided missing-service and this resolve had no default')
+      expect(() => inject('missing-service')).toThrow('[dowel]: nothing provided missing-service and this resolve had no default')
       expect(() => inject('missing-service')).toThrow('inject.optional(token)')
     })
 

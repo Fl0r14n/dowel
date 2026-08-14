@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "inject-braid",
+      "name": "dowel",
       "devDependencies": {
         "@arethetypeswrong/core": "^0.18.5",
         "@biomejs/biome": "^2.5.8",
