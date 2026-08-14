@@ -1,6 +1,11 @@
 # dowel
 
+> A dowel is a plain wooden pin that joins two pieces from the inside — no screws, no bracket, nothing on the
+> surface to see. The joint is the fit itself.
+
 Token-based dependency injection with no registration step. ~160 lines, no dependencies, SSR-safe.
+
+Services join the same way: a token, a factory at the point of use, and no container to wire.
 
 ```sh
 npm i dowel   # bun add dowel
