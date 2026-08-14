@@ -1,4 +1,4 @@
-# dowel
+# dowel-di
 
 > A dowel is a plain wooden pin that joins two pieces from the inside — no screws, no bracket, nothing on the
 > surface to see. The joint is the fit itself.
@@ -8,7 +8,7 @@ Token-based dependency injection with no registration step. ~160 lines, no depen
 Services join the same way: a token, a factory at the point of use, and no container to wire.
 
 ```sh
-npm i dowel   # bun add dowel
+npm i dowel-di   # bun add dowel-di
 ```
 
 ## the idea
@@ -41,7 +41,7 @@ export const useLogger = () => inject(Logger, consoleLogger)
 ## vue
 
 ```ts
-import { createProviders, inject } from 'dowel/vue'
+import { createProviders, inject } from 'dowel-di/vue'
 
 app.use(createProviders()) // once per app
 ```
@@ -66,7 +66,7 @@ app.use(myModule('https://logs.example')) // app.use order decides; last one win
 ## react
 
 ```tsx
-import { ContainerProvider, createContainer, useService } from 'dowel/react'
+import { ContainerProvider, createContainer, useService } from 'dowel-di/react'
 
 const container = createContainer() // one per request under SSR
 container.provide(Logger, new RemoteLogger(endpoint)) // overrides, before render
@@ -83,7 +83,7 @@ export const useLogger = () => useService(Logger, consoleLogger)
 Outside components — loaders, guards, service factories — bind the container around a **synchronous** callback:
 
 ```ts
-import { inject, runInContainer } from 'dowel/react'
+import { inject, runInContainer } from 'dowel-di/react'
 
 runInContainer(container, () => inject(Logger, consoleLogger))
 ```
@@ -128,9 +128,9 @@ that module must be a single copy in your graph.
 
 | entry | |
 | --- | --- |
-| `dowel` | `createContainer`, `runInContainer`, types |
-| `dowel/vue` | `createProviders`, `inject`, and `app.providers.provide` via a `vue` type augmentation |
-| `dowel/react` | `ContainerProvider`, `useService`, `inject`, `createContainer`, `runInContainer` |
+| `dowel-di` | `createContainer`, `runInContainer`, types |
+| `dowel-di/vue` | `createProviders`, `inject`, and `app.providers.provide` via a `vue` type augmentation |
+| `dowel-di/react` | `ContainerProvider`, `useService`, `inject`, `createContainer`, `runInContainer` |
 
 ## requirements
 
