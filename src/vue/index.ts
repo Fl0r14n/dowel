@@ -1,26 +1,36 @@
-/** Vue binding. The registry lives on the app instance via `app.provide`, so one map per app — and
- * therefore one per request under SSR — with no ambient global involved. */
-
 import { type App, hasInjectionContext, type InjectionKey, inject as vueInject } from 'vue'
-import { createInjector, type InjectFn, type Injector, type Registry } from '../injector'
+import { createInject, createProvide, type InjectFn, type ProvideFn, type Registry } from '../registry'
 
-/** `Symbol.for`, not `Symbol`: a bare `Symbol('providers')` is minted fresh on every module evaluation, so two
- * copies of this module would write and read different keys on the same app.
- *
- * `.v1` for the same reason the global slots carry it — one app installed by two different majors must miss
- * each other's key rather than share a registry whose shape only one of them agrees with. Bump on a major. */
 const PROVIDERS = Symbol.for('inject-braid.providers.v1') as InjectionKey<Registry>
+
+export interface AppProviders {
+  /** Under `providers` rather than on the app directly, since `app.provide` is vue's own. */
+  provide: ProvideFn
+}
+
+declare module 'vue' {
+  interface App {
+    /** Typed as always present, but only exists after `app.use(createProviders())`. */
+    providers: AppProviders
+  }
+}
 
 export interface ProvidersPlugin {
   install: (app: App) => void
 }
 
-/** Install once per app — so once per request under SSR. */
+/** Install once per app. Two doors onto one registry, and neither is derivable from the other:
+ * `app.provide` is the read path for consumer code, which has an injection context but no app reference;
+ * `app.providers` is the write path for wiring code, which has the app but no context. */
 export const createProviders = (): ProvidersPlugin => ({
-  install: (app: App) => app.provide(PROVIDERS, new Map() as Registry)
+  install: (app: App) => {
+    const providers: Registry = new Map()
+    app.provide(PROVIDERS, providers)
+    app.providers = { provide: createProvide(() => providers) }
+  }
 })
 
-const injector: Injector = createInjector(() => {
+export const inject: InjectFn = createInject(() => {
   const providers = (hasInjectionContext() && vueInject(PROVIDERS, undefined)) || undefined
   if (!providers) {
     throw new Error(
@@ -30,6 +40,3 @@ const injector: Injector = createInjector(() => {
   }
   return providers
 })
-
-export const provide: Injector['provide'] = injector.provide
-export const inject: InjectFn = injector.inject

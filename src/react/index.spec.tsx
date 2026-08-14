@@ -3,17 +3,13 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createContainer, runInContainer } from '../container'
-import { ContainerProvider, inject, provide, useService } from '.'
+import { ContainerProvider, inject, useService } from '.'
 
 afterEach(cleanup)
-
-// every resolve needs an active container — there is no fallback map to answer from
-const inContainer = <T,>(fn: () => T): T => runInContainer(createContainer(), fn)
 
 describe('react binding, outside components', () => {
   it('throws when no container is bound rather than answering from a shared map', () => {
     expect(() => inject('anything')).toThrow('[inject-braid]: no active container')
-    expect(() => provide('anything', { v: 1 })).toThrow('runInContainer')
   })
 
   it('sends a component-side resolve to useService, since wrapping the tree would not help it', () => {
@@ -24,68 +20,70 @@ describe('react binding, outside components', () => {
   })
 
   it('provides and injects a string token', () => {
+    const container = createContainer()
     const value = { id: 1 }
 
-    inContainer(() => {
-      provide('test-string-token', value)
-      expect(inject('test-string-token')).toBe(value)
-    })
+    // providing takes no binding: the container is right here
+    container.provide('test-string-token', value)
+    expect(runInContainer(container, () => inject('test-string-token'))).toBe(value)
   })
 
   it('provides and injects a class token', () => {
+    const container = createContainer()
     class TestService {
       prop = 'value'
     }
     const value = new TestService()
 
-    inContainer(() => {
-      provide(TestService, value)
-      expect(inject(TestService)).toBe(value)
-    })
+    container.provide(TestService, value)
+    expect(runInContainer(container, () => inject(TestService))).toBe(value)
   })
 
-  it('returns undefined for an unprovided token', () => {
-    expect(inContainer(() => inject('non-existent-token'))).toBeUndefined()
+  it('throws for an unprovided token, and answers undefined only when asked to', () => {
+    const container = createContainer()
+    expect(() => runInContainer(container, () => inject('non-existent-token'))).toThrow('nothing provided non-existent-token')
+    expect(runInContainer(container, () => inject.optional('non-existent-token'))).toBeUndefined()
   })
 
   it('overwrites an existing value when providing again', () => {
+    const container = createContainer()
     const value1 = { v: 1 }
     const value2 = { v: 2 }
 
-    inContainer(() => {
-      provide('overwrite-token', value1)
-      expect(inject('overwrite-token')).toBe(value1)
+    container.provide('overwrite-token', value1)
+    expect(runInContainer(container, () => inject('overwrite-token'))).toBe(value1)
 
-      provide('overwrite-token', value2)
-      expect(inject('overwrite-token')).toBe(value2)
-    })
+    container.provide('overwrite-token', value2)
+    expect(runInContainer(container, () => inject('overwrite-token'))).toBe(value2)
   })
 
-  describe('defaultValue behavior', () => {
-    it('uses and stores the default when the key is absent', () => {
+  describe('factory defaults', () => {
+    it('runs and stores the factory when the key is absent', () => {
+      const container = createContainer()
       const defaultValue = { default: true }
 
-      inContainer(() => {
-        expect(inject('default-value-token', defaultValue)).toBe(defaultValue)
+      runInContainer(container, () => {
+        expect(inject('default-value-token', () => defaultValue)).toBe(defaultValue)
         expect(inject('default-value-token')).toBe(defaultValue)
       })
     })
 
-    it('ignores the default when the token was provided', () => {
+    it('skips the factory when the token was provided', () => {
+      const container = createContainer()
       const existingValue = { existing: true }
 
-      inContainer(() => {
-        provide('existing-token', existingValue)
+      container.provide('existing-token', existingValue)
 
-        expect(inject('existing-token', { default: true })).toBe(existingValue)
-      })
+      expect(runInContainer(container, () => inject('existing-token', () => ({ default: true })))).toBe(existingValue)
     })
 
-    it('keeps a provided primitive rather than letting a default overwrite it', () => {
-      inContainer(() => {
-        provide('primitive-token', 123)
+    it('keeps a provided primitive rather than letting a factory overwrite it', () => {
+      const container = createContainer()
 
-        expect(inject('primitive-token', 456)).toBe(123)
+      container.provide('primitive-token', 123)
+
+      runInContainer(container, () => {
+        expect(inject('primitive-token', () => 456)).toBe(123)
         expect(inject('primitive-token')).toBe(123)
       })
     })
@@ -105,11 +103,10 @@ describe('react binding, outside components', () => {
 
     it('skips the factory when a value is already provided', () => {
       const factory = vi.fn(() => ({ n: 1 }))
+      const container = createContainer()
 
-      runInContainer(createContainer(), () => {
-        provide('provided-service', { n: 2 })
-        expect(inject<{ n: number }>('provided-service', factory).n).toBe(2)
-      })
+      container.provide('provided-service', { n: 2 })
+      expect(runInContainer(container, () => inject<{ n: number }>('provided-service', factory).n)).toBe(2)
       expect(factory).not.toHaveBeenCalled()
     })
 
@@ -125,9 +122,10 @@ describe('react binding, outside components', () => {
         }
       }
       const override = new Override()
+      const container = createContainer()
 
-      runInContainer(createContainer(), () => {
-        provide(Base, override)
+      container.provide(Base, override)
+      runInContainer(container, () => {
         // Object.keys(override) is [] — must still count as present, not be clobbered by the default
         expect(inject(Base, () => new Base())).toBe(override)
         expect(inject(Base, () => new Base()).tag()).toBe('override')
@@ -140,9 +138,9 @@ describe('react binding, outside components', () => {
       const first = createContainer()
       const second = createContainer()
 
-      runInContainer(first, () => provide('scoped-service', { app: 1 }))
-      expect(runInContainer(first, () => inject<{ app: number }>('scoped-service')!.app)).toBe(1)
-      expect(runInContainer(second, () => inject('scoped-service'))).toBeUndefined()
+      first.provide('scoped-service', { app: 1 })
+      expect(runInContainer(first, () => inject<{ app: number }>('scoped-service').app)).toBe(1)
+      expect(runInContainer(second, () => inject.optional('scoped-service'))).toBeUndefined()
       // and once the binding unwinds there is nowhere left to resolve against at all
       expect(() => inject('scoped-service')).toThrow('no active container')
     })
@@ -151,8 +149,8 @@ describe('react binding, outside components', () => {
       const outer = createContainer()
       const inner = createContainer()
 
+      outer.provide('nested', 'outer')
       runInContainer(outer, () => {
-        provide('nested', 'outer')
         expect(() =>
           runInContainer(inner, () => {
             throw new Error('boom')
@@ -177,7 +175,7 @@ const Consumer = () => {
 describe('useService', () => {
   it('resolves the value provided on the container in context', () => {
     const container = createContainer()
-    container.providers.set(Greeter, new Greeter('provided'))
+    container.provide(Greeter, new Greeter('provided'))
 
     render(
       <ContainerProvider container={container}>
@@ -190,9 +188,9 @@ describe('useService', () => {
 
   it('keeps two containers isolated — the SSR per-request guarantee', () => {
     const first = createContainer()
-    first.providers.set(Greeter, new Greeter('first'))
+    first.provide(Greeter, new Greeter('first'))
     const second = createContainer()
-    second.providers.set(Greeter, new Greeter('second'))
+    second.provide(Greeter, new Greeter('second'))
 
     render(
       <>
@@ -228,5 +226,30 @@ describe('useService', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(() => render(<Consumer />)).toThrow(/no container in context/)
     consoleError.mockRestore()
+  })
+
+  it('throws for an unprovided token with no default, and .optional renders nothing instead', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const container = createContainer()
+    const Required = () => <span>{useService(Greeter).greeting}</span>
+    const Optional = () => <span>{useService.optional(Greeter)?.greeting ?? 'absent'}</span>
+
+    expect(() =>
+      render(
+        <ContainerProvider container={container}>
+          <Required />
+        </ContainerProvider>
+      )
+    ).toThrow('nothing provided Greeter')
+    consoleError.mockRestore()
+
+    render(
+      <ContainerProvider container={container}>
+        <Optional />
+      </ContainerProvider>
+    )
+    expect(screen.getByText('absent')).toBeTruthy()
+    // .optional stored nothing, so a container provided later still answers
+    expect(container.providers.has(Greeter)).toBe(false)
   })
 })

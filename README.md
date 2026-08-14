@@ -1,32 +1,22 @@
 # inject-braid
 
-Token-based dependency injection with no registration step. ~120 lines, no dependencies, SSR-safe.
+Token-based dependency injection with no registration step. ~160 lines, no dependencies, SSR-safe.
 
 ```sh
 npm i inject-braid   # bun add inject-braid
 ```
 
-A service declares its own default, at the point of use:
+## the idea
+
+A service declares its own default where it's used, and the first call runs the factory and stores it:
 
 ```ts
 const logger = inject(Logger, () => new ConsoleLogger())
 ```
 
-The first call runs the factory and stores it, so every later `inject(Logger)` — anywhere, any module —
-returns that same instance. The factory *is* the registration. There is no container to wire, no `bind`, no
-decorators, no build step.
+Every later `inject(Logger)` — any module — gets that same instance. The factory *is* the registration.
 
-Override it by providing first:
-
-```ts
-provide(Logger, new TestLogger())
-```
-
-Do it before anything resolves, typically in bootstrap. Provide later and the registry takes the new value,
-but whatever already captured the default keeps it — you get a warning naming the token when that happens.
-
-Tokens are strings or classes. An abstract class is both the runtime key and the compile-time type (its
-`prototype`), so a service needs no separate interface and token:
+Tokens are classes or strings. An abstract class is both the runtime key and the compile-time type:
 
 ```ts
 export abstract class Logger {
@@ -34,170 +24,115 @@ export abstract class Logger {
 }
 ```
 
-A class token keys on the class *itself*, never on its `name` — a minifier rewrites those, and two tokens from
-different chunks routinely both come out as `b`. Names appear only in warnings.
-
-A default applies when the token has never been provided — not when the stored value merely looks empty. A
-provided `0`, `''`, `false` or `{}` is a value the caller chose, and it stands:
+In practice you export one accessor per service, next to it, and consumers call that:
 
 ```ts
-provide('retries', 0)
-inject('retries', 3) // → 0
+// logger.ts
+const consoleLogger = () => new ConsoleLogger()
+
+export const useLogger = () => inject(Logger, consoleLogger)
 ```
-
-A function default *is* the factory, so wrap one to hold a function as the value:
-
-```ts
-inject('transport', () => fetchWithRetry) // → fetchWithRetry, not its return value
-```
-
-Without a default, an unprovided token resolves to `undefined`, and the types say so — `inject(Logger)` is
-`Logger | undefined`, `inject(Logger, () => new ConsoleLogger())` is `Logger`.
-
-A falsy token throws instead of resolving. `undefined` at a call site is nearly always a circular import
-between the module defining the class and the one injecting it, and the error names that.
-
-Pick one of the three entries below. `inject-braid/vue` and `inject-braid/react` never pull each other into
-your bundle.
 
 ## vue
 
-The registry lives on the app instance, so one per app — and therefore one per request under SSR.
-
 ```ts
-import { createProviders, inject, provide } from 'inject-braid/vue'
+import { createProviders, inject } from 'inject-braid/vue'
 
 app.use(createProviders()) // once per app
-
-const logger = inject(Logger, () => new ConsoleLogger())
 ```
 
-Calls need a vue injection context — component setup, store setup, `app.runWithContext`. Off-context it
-throws rather than guessing, since answering from a fallback would mean one request reading another's
-services.
+Resolve inside a vue injection context — component setup, store setup, `app.runWithContext`:
+
+```ts
+const logger = useLogger()
+```
+
+Override by providing on the app, before anything resolves. Installing the plugin puts `providers` on the app:
+
+```ts
+export const myModule = (endpoint: string) => ({
+  install: (app: App) => app.providers.provide(Logger, new RemoteLogger(endpoint))
+})
+
+app.use(createProviders())
+app.use(myModule('https://logs.example')) // app.use order decides; last one wins
+```
 
 ## react
-
-React has no injection context, so the registry is an explicit `Container` you make per request.
 
 ```tsx
 import { ContainerProvider, createContainer, useService } from 'inject-braid/react'
 
-const container = createContainer()
-;<ContainerProvider container={container}>{app}</ContainerProvider>
+const container = createContainer() // one per request under SSR
+container.provide(Logger, new RemoteLogger(endpoint)) // overrides, before render
 
-const logger = useService(Logger, () => new ConsoleLogger())
+render(<ContainerProvider container={container}>{app}</ContainerProvider>)
 ```
 
-Outside components — loaders, guards, service factories — bind the container around a **synchronous**
-callback:
+In components, `useService`:
+
+```tsx
+export const useLogger = () => useService(Logger, consoleLogger)
+```
+
+Outside components — loaders, guards, service factories — bind the container around a **synchronous** callback:
 
 ```ts
 import { inject, runInContainer } from 'inject-braid/react'
 
-runInContainer(container, () => inject(Logger, () => new ConsoleLogger()))
+runInContainer(container, () => inject(Logger, consoleLogger))
 ```
 
-Synchronous on purpose: factories only wire dependencies, they never await, so concurrent SSR renders cannot
-interleave and steal each other's container.
+## rules worth knowing
 
-The binding ends when the callback **returns**. Returning a promise is fine — dependencies are resolved before
-the request starts:
+**The second argument is a factory, never a value.** A value would be built at module scope and shared by
+every request, so under SSR one request would read another's state.
 
 ```ts
-runInContainer(container, () => inject(Api, () => new Api()).fetchUsers()) // ok
+inject(Cart, new Cart()) // ✗ compile error
+inject(Cart, () => new Cart()) // ✓ one per registry
 ```
 
-Resolving *after* an `await` inside the callback is not — by then the binding has unwound:
+**`inject` returns `T`, and throws if nothing provided the token and no factory was given.** When absent is a
+valid answer, ask for it — `inject.optional(token)` returns `T | undefined` and stores nothing, so a module
+providing it later still wins. `useService.optional` is the component-side counterpart.
+
+**Provide before anything resolves.** You get that for free: providing needs the app or container, which is
+bootstrap code, and resolving needs a context that only exists once the app is running. Invert it anyway — an
+`app.use` after mount, a container reused between tests — and the registry takes the new value while whatever
+already captured the earlier instance keeps it, silently.
+
+**A `runInContainer` binding ends when its callback returns.** Returning a promise is fine; resolving after an
+`await` *inside* it is not.
 
 ```ts
+runInContainer(container, () => inject(Api, api).fetchUsers()) // ✓ resolved, then awaited
 runInContainer(container, async () => {
   await ready
-  return inject(Api) // throws: the binding ended when the callback returned its promise
+  return inject(Api) // ✗ the binding already ended
 })
 ```
 
-Resolve first, await second.
+**A circular dependency overflows the stack.** There's no cycle detector; you get a `RangeError` on the first
+resolve with the loop visible in the frames.
 
-With no container bound, resolving **throws**. There is no shared fallback registry — one would read as
-working right up until SSR, where it is one request resolving another request's services.
+**Class tokens are matched by identity**, so an override must import the very class the library injects, and
+that module must be a single copy in your graph.
 
-| Export | What |
+## exports
+
+| entry | |
 | --- | --- |
-| `ContainerProvider` | holds the per-request container for the tree |
-| `useService(token, default?)` | resolve against the container in React context |
-| `provide`, `inject` | resolve against the bound container, for non-component code |
-| `createContainer`, `runInContainer`, `activeContainer` | re-exported from the core, so one import site |
+| `inject-braid` | `createContainer`, `runInContainer`, types |
+| `inject-braid/vue` | `createProviders`, `inject`, and `app.providers.provide` via a `vue` type augmentation |
+| `inject-braid/react` | `ContainerProvider`, `useService`, `inject`, `createContainer`, `runInContainer` |
 
-## agnostic
-
-The root entry carries no framework and no bound `provide`/`inject` — which registry is in play is the
-binding's decision. What's here is the container and the token types:
-
-| Export | What |
-| --- | --- |
-| `createContainer()` | a `Container` — a `Map` of providers |
-| `runInContainer(container, fn)` | binds a container for a sync callback, restoring the previous one |
-| `activeContainer()` | the bound container or `undefined` — the peek that never throws |
-| `ProviderToken`, `Type`, `AbstractType`, `Registry`, `Container` | types |
-
-Useful for the code that owns request lifecycle — an SSR entry making one container per request, or a test
-harness — without dragging react or vue into that module's graph.
-
-## overriding a library's services
-
-The case this is built for: a library ships `inject(Logger, () => new ConsoleLogger())` at its call sites,
-and a project swaps in its own implementation without the library knowing. `provide` the replacement before
-anything resolves — in bootstrap, and under SSR once per request.
-
-```ts
-// vue — a plugin of your own, installed after createProviders()
-export const myModule = (endpoint: string) => ({
-  install: (app: App) =>
-    app.runWithContext(() => {
-      provide(Logger, new RemoteLogger(endpoint))
-      provide('Config', { verbose: true })
-    })
-})
-
-app.use(createProviders())
-app.use(myModule('https://logs.example'))
-```
-
-`app.runWithContext` is not optional there: a plugin's `install` receives the app but runs with no injection
-context, so a bare `provide` inside it throws. Vue's own plugin API is `app.provide` for the same reason.
-
-```ts
-// react — on the request's container, before render
-const container = createContainer()
-runInContainer(container, () => {
-  provide(Logger, new RemoteLogger('https://logs.example'))
-  provide('Config', { verbose: true })
-})
-render(<ContainerProvider container={container}>{app}</ContainerProvider>)
-```
-
-Same shape in tests: build a container (or an app) per test and `provide` mocks into it, so nothing leaks
-between cases.
-
-Order is the only rule. A `provide` after something already resolved the default overwrites the registry, but
-every holder that captured the earlier instance keeps it — half the app on each. That case warns, naming the
-token.
-
-Overriding a string token works the same way. Either kind survives minification — a class token is matched by
-identity, so the override has to import the very class the library injects, which is the same thing a string
-token's spelling has to agree on.
-
-Identity means the *same class object*, so the module defining it must be a single copy in your graph. Two
-copies — a nested `node_modules`, a bundler resolving esm and cjs halves both — are two distinct objects, and
-then a `provide` writes a key nothing reads while the default quietly runs instead.
-
-## Requirements
+## requirements
 
 Node 22+, Bun, Deno, or any current browser. Nothing from `node:*`. ESM and CJS both shipped. `vue` and
 `react` are optional peers — you need only the one whose binding you import.
 
-## Development
+## development
 
 ```sh
 bun install
@@ -206,6 +141,8 @@ bun run build   # tsdown → dist, validated by publint and attw
 bun run smoke   # import the built dist/ under plain node, esm and cjs
 ```
 
-## Licence
+Design decisions and their reasoning live in [AGENTS.md](https://github.com/Fl0r14n/inject-braid/blob/main/AGENTS.md) — it is not in the npm tarball.
+
+## licence
 
 MIT
