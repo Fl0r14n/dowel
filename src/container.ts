@@ -38,14 +38,15 @@ export const runInContainer = <T>(container: Container, fn: () => T): T => {
   }
 }
 
-/** `hint` lets a binding name its own door; this module is framework-free and cannot. */
-export const containerRegistry = (hint = 'bind one with runInContainer(createContainer(), fn)'): Registry => {
+/** `hint` lets a binding name its own door; this module is framework-free and cannot. `required: false` — the
+ * `inject.optional` path — answers `undefined` rather than throwing: having no registry to read is one more way
+ * for a token to be absent, and it cannot leak, because nothing is resolved from anywhere. */
+export const containerRegistry = (required = true, hint = 'bind one with runInContainer(createContainer(), fn)'): Registry | undefined => {
   const container = state.active
-  if (!container) {
-    throw new Error(
-      `[dowel]: no active container — ${hint}. A binding also ends when its callback returns, so a ` +
-        'resolve that happens after an `await` inside runInContainer is already outside it.'
-    )
-  }
-  return container.providers
+  if (container) return container.providers
+  if (!required) return undefined
+  throw new Error(
+    `[dowel]: no active container — ${hint}. A binding also ends when its callback returns, so a ` +
+      'resolve that happens after an `await` inside runInContainer is already outside it.'
+  )
 }

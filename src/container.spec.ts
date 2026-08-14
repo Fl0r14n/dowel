@@ -9,6 +9,33 @@ abstract class Service {
   value!: string
 }
 
+describe('resolving with no container bound', () => {
+  const inject = createInject(containerRegistry)
+
+  it('throws for a required resolve, naming the door to bind one', () => {
+    expect(() => inject('anything')).toThrow('no active container')
+  })
+
+  it('answers undefined for inject.optional instead', () => {
+    // a caller that says absence is acceptable means it, and this cannot leak — nothing is resolved from
+    // anywhere. It is what lets a util callable from a client event handler read a request-scoped token.
+    expect(inject.optional('anything')).toBeUndefined()
+  })
+
+  it('still refuses a falsy token on the optional path', () => {
+    expect(() => inject.optional(undefined as any)).toThrow('inject was given undefined as its token')
+  })
+
+  it('reads the container again as soon as one is bound', () => {
+    const container = createContainer()
+    container.provide('url', 'https://example.test')
+
+    expect(inject.optional('url')).toBeUndefined()
+    expect(runInContainer(container, () => inject.optional('url'))).toBe('https://example.test')
+    expect(inject.optional('url')).toBeUndefined()
+  })
+})
+
 describe('container.provide', () => {
   it('needs no binding, because the caller is holding the container', () => {
     const inject = createInject(containerRegistry)

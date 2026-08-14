@@ -11,7 +11,7 @@ export { type Container, createContainer, runInContainer } from '../container'
  * component body — `useService` does. */
 const OFF_CONTAINER = 'inside components use useService(token, default), elsewhere bind one with runInContainer(createContainer(), fn)'
 
-export const inject: InjectFn = createInject(() => containerRegistry(OFF_CONTAINER))
+export const inject: InjectFn = createInject(required => containerRegistry(required, OFF_CONTAINER))
 
 const ContainerContext = createContext<Container | undefined>(undefined)
 

@@ -30,13 +30,13 @@ export const createProviders = (): ProvidersPlugin => ({
   }
 })
 
-export const inject: InjectFn = createInject(() => {
+export const inject: InjectFn = createInject(required => {
   const providers = (hasInjectionContext() && vueInject(PROVIDERS, undefined)) || undefined
-  if (!providers) {
-    throw new Error(
-      '[dowel]: no provider registry — either this ran outside a vue injection context (resolve inside ' +
-        'a component setup, a store setup or a navigation guard), or `app.use(createProviders())` was never called.'
-    )
-  }
-  return providers
+  if (providers) return providers
+  // `inject.optional` off-context answers undefined: no registry is one more way for a token to be absent
+  if (!required) return undefined
+  throw new Error(
+    '[dowel]: no provider registry — either this ran outside a vue injection context (resolve inside ' +
+      'a component setup, a store setup or a navigation guard), or `app.use(createProviders())` was never called.'
+  )
 })

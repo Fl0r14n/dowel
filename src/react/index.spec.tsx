@@ -19,6 +19,12 @@ describe('react binding, outside components', () => {
     expect(() => inject('anything')).not.toThrow('<ContainerProvider>')
   })
 
+  it('answers undefined for inject.optional with no container, so a util can be called from anywhere', () => {
+    // a client event handler, or a helper shared with non-component code, sits exactly here. `useService`
+    // and `useService.optional` still throw without a provider — that is a setup bug, not an absent value
+    expect(inject.optional('anything')).toBeUndefined()
+  })
+
   it('provides and injects a string token', () => {
     const container = createContainer()
     const value = { id: 1 }

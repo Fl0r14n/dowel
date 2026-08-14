@@ -125,6 +125,15 @@ describe('vue binding', () => {
     expect(() => bare.runWithContext(() => inject('anything'))).toThrow('createProviders')
   })
 
+  it('answers undefined for inject.optional off-context, so a plain util can call it from anywhere', () => {
+    const { provide } = appContext()
+    provide('request-url', 'https://example.test')
+
+    // no injection context here — a client event handler, or a util shared with non-component code, sits
+    // exactly here, and a request-scoped token simply has no answer for it
+    expect(inject.optional('request-url')).toBeUndefined()
+  })
+
   describe('factory defaults', () => {
     it('runs and stores the factory when the key is absent', () => {
       const { run } = appContext()

@@ -53,6 +53,19 @@ module that provides the token later. That is also why it can't be spelled `inje
 It hangs off the function rather than sitting beside it so there's one name to import and autocomplete finds
 the variant. `useService.optional` mirrors it.
 
+`.optional` also answers `undefined` when there is **no registry at all** — no bound container, no vue injection
+context — rather than throwing. The lookup a binding supplies is `(required: boolean) => Registry | undefined`,
+and each returns `undefined` instead of throwing when `required` is false. Reasoning: the throw exists to stop a
+resolve from silently answering off a shared fallback registry, which is one request reading another's
+services. Answering `undefined` resolves from nowhere, so it cannot leak, and the caller has said absence is
+acceptable. The strict path keeps the loud message, and that is where nearly every call lives.
+
+The case that forced it: a helper like `getUrlQuery()` is callable from a client event handler, where nothing is
+bound, and wants a request-scoped `RequestUrl` token that only exists on the server. The alternative was
+exporting `activeContainer` so callers could peek — which hands out the container and invites a bespoke
+`container.location` field instead of a token. `useService.optional` still throws without a `<ContainerProvider>`,
+because a component with no provider is a setup bug rather than an absent value.
+
 ## falsy tokens throw
 
 `assertToken` runs before the registry is touched, on both sides. A falsy token is nearly always a class left

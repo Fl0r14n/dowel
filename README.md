@@ -102,6 +102,14 @@ inject(Cart, () => new Cart()) // ✓ one per registry
 valid answer, ask for it — `inject.optional(token)` returns `T | undefined` and stores nothing, so a module
 providing it later still wins. `useService.optional` is the component-side counterpart.
 
+`inject.optional` also answers `undefined` when there is no registry to read at all — no bound container, no vue
+injection context — where plain `inject` throws. That's what lets a helper callable from anywhere read a
+request-scoped value:
+
+```ts
+export const currentLocation = () => inject.optional(RequestUrl) ?? globalThis.location
+```
+
 **Provide before anything resolves.** You get that for free: providing needs the app or container, which is
 bootstrap code, and resolving needs a context that only exists once the app is running. Invert it anyway — an
 `app.use` after mount, a container reused between tests — and the registry takes the new value while whatever
