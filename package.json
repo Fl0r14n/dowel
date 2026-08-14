@@ -1,6 +1,6 @@
 {
   "name": "dowel",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Tiny token-based DI with no registration step. Per-request containers, lazy defaults, vue and react bindings. Zero deps, SSR-safe.",
   "license": "MIT",
   "author": "Florian Chiș",
