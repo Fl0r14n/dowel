@@ -15,7 +15,7 @@ export const tokenName = <T>(token: ProviderToken<T>): string => (typeof token =
 
 /** A falsy token is nearly always a class left `undefined` by a circular import, so it throws rather than
  * keying the registry on `undefined`. */
-export const assertToken = <T>(token: ProviderToken<T>, operation: 'inject' | 'provide'): void => {
+export const assertToken = <T>(token: ProviderToken<T>, operation: 'inject' | 'provide' | 'dowel'): void => {
   if (token) return
   const received = token === '' ? 'an empty string' : String(token)
   throw new Error(`[dowel]: ${operation} was given ${received} as its token — usually a circular import.`)

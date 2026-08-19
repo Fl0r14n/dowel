@@ -3,8 +3,8 @@
 import * as React from 'react'
 import { createContext, createElement, type ReactNode, use } from 'react'
 import { installBinding } from '../binding'
-import { type Container, containerRegistry } from '../container'
-import { createInject, type InjectFn, type RegistryLookup } from '../registry'
+import { activeProviders, type Container } from '../container'
+import { type BindingResolve, createInject, type InjectFn, MISSING, resolveInRegistry } from '../registry'
 
 export { type Container, createContainer, runInContainer } from '../container'
 
@@ -36,14 +36,14 @@ const renderContainer = (): Container | undefined => {
   }
 }
 
-export const reactRegistry: RegistryLookup = required => {
-  const providers = renderContainer()?.providers || containerRegistry(false)
-  if (providers) return providers
-  if (!required) return undefined
+export const reactResolve: BindingResolve = (token, required) => {
+  const providers = renderContainer()?.providers || activeProviders()
+  if (providers) return resolveInRegistry(providers, token)
+  if (!required) return MISSING
   throw new Error(`[dowel]: no active container — wrap the tree in <ContainerProvider>, or resolve inside runInContainer(container, fn).`)
 }
 
 /** One door: the container off context during render, the one `runInContainer` bound anywhere else. */
-export const inject: InjectFn = createInject(reactRegistry)
+export const inject: InjectFn = createInject(reactResolve)
 
-installBinding(reactRegistry, 'react: during render under <ContainerProvider>, or inside runInContainer')
+installBinding({ hint: 'react: during render under <ContainerProvider>, or inside runInContainer', resolve: reactResolve })

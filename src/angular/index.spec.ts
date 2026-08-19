@@ -1,137 +1,123 @@
-import { InjectionToken, Injector, inject as ngInject, type Provider, runInInjectionContext } from '@angular/core'
+import { InjectionToken, Injector, inject as ngInject, type Provider, runInInjectionContext, ɵINJECTOR_SCOPE } from '@angular/core'
 import { describe, expect, it, vi } from 'vitest'
-import { inject, provideDowel } from '.'
+import { dowel } from '../dowel'
+import { angularToken, inject } from '.'
 
-// `Injector.create` types its `providers` as angular's `Provider` and walks `EnvironmentProviders` all the same;
-// a genuinely root-scoped injector would need a platform, and @angular/platform-browser is not a dependency here
-const injectorWith = (...providers: unknown[]): Injector => Injector.create({ providers: providers as Provider[] })
+// bootstrapApplication marks its environment injector as the 'root' scope, which is what a `providedIn: 'root'`
+// factory needs. `ɵINJECTOR_SCOPE` is how to say that without a platform, and @angular/platform-browser is not a
+// dependency here.
+const rootInjector = (...providers: Provider[]): Injector =>
+  Injector.create({ providers: [{ provide: ɵINJECTOR_SCOPE, useValue: 'root' }, ...providers] })
 
-// what a component field initializer, a constructor, a route resolver or a factory supplies
-const context = (...providers: unknown[]) => {
-  const injector = injectorWith(...providers)
-  return <T>(fn: () => T): T => runInInjectionContext(injector, fn)
-}
+const child = (parent: Injector, ...providers: Provider[]): Injector => Injector.create({ providers, parent })
 
-describe('angular binding', () => {
-  it('runs a factory default once per injector and stores it', () => {
-    abstract class Logger {
-      abstract log(): string
-    }
-    const factory = vi.fn(() => ({ log: () => 'console' }))
-    const run = context(provideDowel(() => {}))
+describe('a declared default becomes the token’s own angular factory', () => {
+  abstract class Cart {
+    abstract id: string
+  }
+  const factory = vi.fn(() => ({ id: 'default' }))
+  const injectCart = dowel(Cart, factory)
 
-    const first = run(() => inject(Logger, factory))
-    expect(run(() => inject(Logger))).toBe(first)
-    expect(factory).toHaveBeenCalledTimes(1)
+  it('resolves through angular’s own inject, with no dowel in the caller', () => {
+    expect(runInInjectionContext(rootInjector(), () => ngInject(Cart).id)).toBe('default')
   })
 
-  it('gives each injector its own registry, which under SSR is one per request', () => {
-    const factory = vi.fn(() => ({ n: 1 }))
-
-    context(provideDowel(() => {}))(() => inject('per-request', factory))
-    context(provideDowel(() => {}))(() => inject('per-request', factory))
-
-    expect(factory).toHaveBeenCalledTimes(2)
+  it('resolves through dowel’s inject too, for code shared with the other storefronts', () => {
+    expect(runInInjectionContext(rootInjector(), () => inject(Cart).id)).toBe('default')
+    expect(runInInjectionContext(rootInjector(), injectCart).id).toBe('default')
   })
 
-  it('takes a provideDowel override over the factory default', () => {
-    abstract class Logger {
-      abstract log(): string
-    }
-    const remote = { log: () => 'remote' }
-    const run = context(provideDowel(provide => provide(Logger, remote)))
+  it('builds one instance per root injector, which under SSR is one per request', () => {
+    const first = rootInjector()
+    const a = runInInjectionContext(first, () => ngInject(Cart))
 
-    expect(run(() => inject(Logger, () => ({ log: () => 'console' })))).toBe(remote)
+    expect(runInInjectionContext(first, () => ngInject(Cart))).toBe(a)
+    expect(runInInjectionContext(rootInjector(), () => ngInject(Cart))).not.toBe(a)
   })
 
-  it('runs a setup inside an injection context, so it can build a value out of angular services', () => {
+  it('loses to a plain angular provider', () => {
+    const injector = rootInjector({ provide: Cart, useValue: { id: 'override' } })
+
+    expect(runInInjectionContext(injector, () => ngInject(Cart).id)).toBe('override')
+    expect(runInInjectionContext(injector, () => inject(Cart).id)).toBe('override')
+  })
+
+  it('loses to a useFactory, which resolves other tokens the way any angular factory does', () => {
     const ENDPOINT = new InjectionToken<string>('endpoint')
-    const run = context(
-      { provide: ENDPOINT, useValue: 'https://logs.example' },
-      provideDowel(provide => provide('sink', ngInject(ENDPOINT)))
+    const injector = rootInjector(
+      { provide: ENDPOINT, useValue: 'https://occ.example' },
+      { provide: Cart, useFactory: () => ({ id: ngInject(ENDPOINT) }) }
     )
 
-    expect(run(() => inject('sink'))).toBe('https://logs.example')
+    expect(runInInjectionContext(injector, () => ngInject(Cart).id)).toBe('https://occ.example')
   })
 
-  it('composes every provideDowel in provider order, so the last override wins', () => {
-    abstract class Foo {
-      abstract tag(): string
+  it('is overridable for one route’s subtree only', () => {
+    const root = rootInjector()
+    const route = child(root, { provide: Cart, useValue: { id: 'checkout' } })
+
+    expect(runInInjectionContext(route, () => ngInject(Cart).id)).toBe('checkout')
+    expect(runInInjectionContext(root, () => ngInject(Cart).id)).toBe('default')
+  })
+})
+
+describe('a token declared without a default', () => {
+  abstract class ContextFactory {
+    abstract create: () => string
+  }
+  dowel(ContextFactory)
+
+  it('resolves from the app’s provider', () => {
+    const injector = rootInjector({ provide: ContextFactory, useValue: { create: () => 'from the app' } })
+
+    expect(runInInjectionContext(injector, () => inject(ContextFactory).create())).toBe('from the app')
+  })
+
+  it('raises dowel’s message, not NG0201, when nobody provided it', () => {
+    expect(() => runInInjectionContext(rootInjector(), () => inject(ContextFactory))).toThrow('nothing provided ContextFactory')
+  })
+
+  it('answers undefined for inject.optional', () => {
+    expect(runInInjectionContext(rootInjector(), () => inject.optional(ContextFactory))).toBeUndefined()
+  })
+})
+
+describe('string tokens', () => {
+  const injectApiUrl = dowel('api-url', () => 'https://occ.example')
+
+  it('resolve through a minted InjectionToken, since angular has no string tokens', () => {
+    expect(runInInjectionContext(rootInjector(), injectApiUrl)).toBe('https://occ.example')
+    expect(runInInjectionContext(rootInjector(), () => ngInject(angularToken<string>('api-url')))).toBe('https://occ.example')
+  })
+
+  it('are overridden through that same token', () => {
+    const injector = rootInjector({ provide: angularToken<string>('api-url'), useValue: 'https://staging.example' })
+
+    expect(runInInjectionContext(injector, injectApiUrl)).toBe('https://staging.example')
+  })
+})
+
+describe('outside an injection context', () => {
+  const injectThing = dowel('off-context-thing', () => 'value')
+
+  it('throws, naming the doors', () => {
+    expect(injectThing).toThrow('angular injection context')
+    expect(injectThing).toThrow('runInInjectionContext')
+  })
+
+  it('answers undefined for inject.optional, so a plain util can call it from anywhere', () => {
+    expect(inject.optional('off-context-thing')).toBeUndefined()
+  })
+})
+
+describe('a class that already carries angular metadata', () => {
+  it('keeps its own, rather than having dowel’s written over it', () => {
+    class Existing {
+      static ɵprov = { token: Existing, providedIn: 'root', factory: () => new Existing('angular’s own') }
+      constructor(public source = 'constructed') {}
     }
-    abstract class Bar {
-      abstract tag(): string
-    }
-    const run = context(
-      provideDowel(provide => provide(Foo, { tag: () => 'A/foo' })),
-      provideDowel(provide => provide(Bar, { tag: () => 'B/bar' })),
-      provideDowel(provide => provide(Foo, { tag: () => 'C/foo' }))
-    )
+    dowel(Existing, () => new Existing('dowel’s'))
 
-    expect(run(() => inject(Foo).tag())).toBe('C/foo')
-    expect(run(() => inject(Bar).tag())).toBe('B/bar')
-  })
-
-  it('throws for an unprovided token inside a context, and answers undefined only when asked to', () => {
-    const run = context(provideDowel(() => {}))
-
-    expect(() => run(() => inject('missing'))).toThrow('nothing provided missing')
-    expect(run(() => inject.optional('missing'))).toBeUndefined()
-  })
-
-  it('throws outside an injection context rather than answering from a global', () => {
-    context(provideDowel(provide => provide('present', 1))) // an injector exists, we are not inside it
-
-    expect(() => inject('present')).toThrow('[dowel]: no provider registry')
-  })
-
-  it('answers undefined for inject.optional off-context, so a plain util can call it from anywhere', () => {
-    context(provideDowel(provide => provide('request-url', 'https://example.test')))
-
-    expect(inject.optional('request-url')).toBeUndefined()
-  })
-
-  it('runs setups at bootstrap, so a throwing one fails there rather than on some later resolve', () => {
-    expect(() =>
-      context(
-        provideDowel(() => {
-          throw new Error('setup blew up')
-        })
-      )
-    ).toThrow('setup blew up')
-  })
-
-  describe('a service chain, which is what a library actually ships', () => {
-    abstract class A {
-      abstract tag(): string
-    }
-    abstract class B {
-      abstract tag(): string
-    }
-    // `injectX` rather than `useX`: angular's naming, and `use*` on a plain function trips rules-of-hooks lint
-    const injectA = () => inject(A, () => ({ tag: () => 'a' }))
-    const injectB = () => inject(B, () => ({ tag: () => `b(${injectA().tag()})` }))
-
-    it('resolves a factory default whose factory resolves another', () => {
-      const run = context(provideDowel(() => {}))
-
-      expect(run(() => injectB().tag())).toBe('b(a)')
-    })
-
-    it('reaches the whole chain from one bootstrap override', () => {
-      const run = context(provideDowel(provide => provide(A, { tag: () => 'A!' })))
-
-      expect(run(() => injectB().tag())).toBe('b(A!)')
-    })
-
-    it('lets a setup resolve a dowel service eagerly, to build a value out of it', () => {
-      // eager on purpose: a lazy `() => injectA()` would hide the re-entrancy this is here to catch
-      const factory = vi.fn(() => ({ tag: () => 'a' }))
-      const run = context(provideDowel(provide => provide('tag-of-a', inject(A, factory).tag())))
-
-      expect(run(() => inject('tag-of-a'))).toBe('a')
-      // one registry, not two: the A the setup resolved is the one every later resolve reads
-      expect(run(() => inject(A, factory).tag())).toBe('a')
-      expect(factory).toHaveBeenCalledTimes(1)
-    })
+    expect(runInInjectionContext(rootInjector(), () => ngInject(Existing).source)).toBe('angular’s own')
   })
 })

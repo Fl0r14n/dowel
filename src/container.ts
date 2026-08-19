@@ -1,6 +1,6 @@
 import { installBinding } from './binding'
 import { globalSlot } from './global'
-import { createProvide, type ProvideFn, type Registry, type RegistryLookup } from './registry'
+import { type BindingResolve, createProvide, MISSING, type ProvideFn, type Registry, resolveInRegistry } from './registry'
 
 export interface Container {
   providers: Registry
@@ -14,15 +14,24 @@ export const createContainer = (): Container => {
 
 const state = globalSlot<{ active?: Container }>('dowel.active.v1', () => ({}))
 
-const CONTAINER_HINT = 'container: inside runInContainer(container, fn)'
+/** The registry a resolve reads when nothing framework-shaped is in scope. `undefined` rather than a throw is the
+ * `inject.optional` answer: having no container is one more way for a token to be absent. */
+export const activeProviders = (): Registry | undefined => state.active?.providers
+
+export const containerResolve: BindingResolve = (token, required) => {
+  const providers = activeProviders()
+  if (providers) return resolveInRegistry(providers, token)
+  if (!required) return MISSING
+  throw new Error(`[dowel]: no active container — resolve inside runInContainer(container, fn), which ends when its callback returns.`)
+}
 
 /** Binds `container` for a **synchronous** callback. The binding ends when `fn` returns, so a resolve after an
  * `await` inside `fn` is already outside it.
  *
- * Installs the container lookup here rather than in `createContainer`, so an app resolving only through a
+ * Installs the container binding here rather than in `createContainer`, so an app resolving only through a
  * framework binding keeps to that one binding — which is what lets its own error message through. */
 export const runInContainer = <T>(container: Container, fn: () => T): T => {
-  installBinding(containerRegistry, CONTAINER_HINT)
+  installBinding({ hint: 'container: inside runInContainer(container, fn)', resolve: containerResolve })
   const previous = state.active
   state.active = container
   try {
@@ -30,14 +39,4 @@ export const runInContainer = <T>(container: Container, fn: () => T): T => {
   } finally {
     state.active = previous
   }
-}
-
-/** `required: false` — the `inject.optional` path — answers `undefined` rather than throwing: having no registry
- * to read is one more way for a token to be absent. A binding on top asks with `false` and writes its own
- * message, since its doors are ones this module must not know about. */
-export const containerRegistry: RegistryLookup = required => {
-  const container = state.active
-  if (container) return container.providers
-  if (!required) return undefined
-  throw new Error(`[dowel]: no active container — resolve inside runInContainer(container, fn), which ends when its callback returns.`)
 }
