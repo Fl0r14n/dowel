@@ -1,21 +1,31 @@
-/** The registry lives in angular's own injector: `providedIn: 'root'` is one per application, and under SSR one
- * per request, so there is nothing to install. */
+/** No registry of its own: a declared default is handed to angular as the token's own `providedIn: 'root'`
+ * factory, so `inject(Token)` from `@angular/core` resolves it — one instance per root injector, which under SSR
+ * is one per request — and an override is a plain angular provider at whatever injector level you like. */
 
-import {
-  assertInInjectionContext,
-  type EnvironmentProviders,
-  InjectionToken,
-  makeEnvironmentProviders,
-  inject as ngInject,
-  provideEnvironmentInitializer
-} from '@angular/core'
-import { installBinding } from '../binding'
-import { createInject, createProvide, type InjectFn, type ProvideFn, type Registry, type RegistryLookup } from '../registry'
+import { assertInInjectionContext, InjectionToken, inject as ngInject } from '@angular/core'
+import { defineInjectable, registerInjectable } from '@angular/core/primitives/di'
+import { type BindingRegister, installBinding } from '../binding'
+import { globalSlot } from '../global'
+import { type BindingResolve, createInject, type InjectFn, MISSING } from '../registry'
+import type { ProviderToken, Type } from '../token'
 
-/** Runs at bootstrap in an injection context, so a value can be built out of angular's services or dowel's. */
-export type ProvidersSetup = (provide: ProvideFn) => void
+/** Angular has no string tokens, so a string resolves through a minted `InjectionToken` — the only writer of this
+ * map, and never a replacement: a reference taken before the declaration ran, by an app assembling its providers
+ * or by the other half of a dual-loaded package, has to keep matching what a resolve injects against. Realm-global
+ * for that second reason. Reach for it to override one: `{ provide: angularToken('api-url'), useValue }`. */
+const minted = globalSlot<Map<string, InjectionToken<any>>>('dowel.angular.tokens.v1', () => new Map())
 
-const PROVIDERS = new InjectionToken<Registry>('dowel.providers.v1', { providedIn: 'root', factory: (): Registry => new Map() })
+export const angularToken = <T>(name: string): InjectionToken<T> => {
+  const existing = minted.get(name)
+  if (existing) return existing
+  // no factory here: the default arrives later, as `ɵprov`, by the same path a class token's does
+  const token = new InjectionToken<T>(name)
+  minted.set(name, token)
+  return token
+}
+
+const ngTokenFor = <T>(token: ProviderToken<T>): ProviderToken<T> | InjectionToken<T> =>
+  (typeof token === 'string' && angularToken<T>(token)) || token
 
 /** Not a `try` around the resolve itself: that runs factory defaults, and one that throws must surface as its own
  * error rather than as "no injection context". */
@@ -28,37 +38,28 @@ const inInjectionContext = (): boolean => {
   }
 }
 
-export const angularRegistry: RegistryLookup = required => {
-  if (inInjectionContext()) return ngInject(PROVIDERS)
-  if (!required) return undefined
-  throw new Error(
-    `[dowel]: no provider registry — resolve in an angular injection context, or wrap it in runInInjectionContext(injector, fn).`
-  )
+export const angularResolve: BindingResolve = (token, required) => {
+  if (!inInjectionContext()) {
+    if (!required) return MISSING
+    throw new Error(
+      `[dowel]: no provider registry — resolve in an angular injection context, or wrap it in runInInjectionContext(injector, fn).`
+    )
+  }
+  // angular cannot tell a provided `null` from an absent token; everything else survives the round trip
+  const value = ngInject(ngTokenFor(token) as never, { optional: true })
+  if (value === null || value === undefined) return MISSING
+  return value as never
 }
 
-export const inject: InjectFn = createInject(angularRegistry)
+/** The declared default becomes the token's own `ɵprov` — what `@Injectable({ providedIn: 'root' })` compiles to,
+ * and what an `InjectionToken`'s `factory` option sets. One path for both kinds of token, and a target that
+ * already carries metadata keeps it: that is an `@Injectable` class used as a dowel token. */
+export const angularRegister: BindingRegister = (token, factory) => {
+  const target = ngTokenFor(token) as Type<unknown> & { ɵprov?: unknown }
+  if (target.ɵprov) return
+  registerInjectable(target, defineInjectable({ token: target, providedIn: 'root', factory }))
+}
 
-// at module scope, not in `provideDowel`, which an app with nothing to override never calls
-installBinding(angularRegistry, 'angular: inside an injection context')
+export const inject: InjectFn = createInject(angularResolve)
 
-/** Overrides, at bootstrap. Every setup runs, in provider order, so the last override of a token wins.
- * `EnvironmentProviders` rather than `Provider[]` so a component-level `providers` cannot compile — that would
- * pin a second registry per component instance.
- *
- * ```ts
- * bootstrapApplication(App, { providers: [provideDowel(provide => provide(Logger, new RemoteLogger(url)))] })
- * ```
- */
-export const provideDowel = (...setups: ProvidersSetup[]): EnvironmentProviders =>
-  makeEnvironmentProviders([
-    // pins the registry to this injector, so an override also lands in an injector the 'root' scope misses
-    { provide: PROVIDERS, useFactory: (): Registry => new Map() },
-    // an initializer, not a factory reading a `multi` token of setups: a setup that resolves a dowel service
-    // inside the registry's own factory re-enters it, which angular reports as NG0200
-    ...setups.map(setup =>
-      provideEnvironmentInitializer(() => {
-        const providers = ngInject(PROVIDERS)
-        setup(createProvide(() => providers))
-      })
-    )
-  ])
+installBinding({ hint: 'angular: inside an injection context', resolve: angularResolve, register: angularRegister })
