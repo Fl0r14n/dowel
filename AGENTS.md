@@ -33,8 +33,9 @@ Consequences, all of them wanted:
 - the accessor is a value, so a library exports `injectCart` rather than a convention.
 - `inject(token)` keeps no factory parameter. It stays exported for code holding a token but not its accessor.
 
-The cost is `isolatedDeclarations`: an export initialised by a call needs an explicit type, so declarations carry
-`Accessor<T>`. That is why `Accessor` is exported at all.
+`isolatedDeclarations` is why `Accessor<T>` is exported: an export initialised by a call needs an explicit type
+under that flag, which this package sets and most consumers do not. Declarations here carry the annotation;
+consumers usually let inference do it.
 
 ## keys are token identity
 
@@ -208,7 +209,7 @@ needs a reader.
 One accessor per service, exported next to it, in every binding:
 
 ```ts
-export const injectMiscResource: Accessor<MiscResource> = dowel(MiscResource, miscResource)
+export const injectMiscResource = dowel(MiscResource, miscResource)
 ```
 
 A library's accessor imports `dowel-di`, not a binding, and is then the same function in all three storefronts. An

@@ -15,13 +15,13 @@ npm i dowel-di   # bun add dowel-di
 One function. A token, its default, and the accessor you export beside it:
 
 ```ts
-import { type Accessor, dowel } from 'dowel-di'
+import { dowel } from 'dowel-di'
 
 export abstract class Logger {
   abstract log(message: string): void
 }
 
-export const injectLogger: Accessor<Logger> = dowel(Logger, () => new ConsoleLogger())
+export const injectLogger = dowel(Logger, () => new ConsoleLogger()) // () => Logger
 ```
 
 That file imports no framework. `injectLogger()` works in a vue setup, a react render, an angular field
@@ -32,7 +32,7 @@ An abstract class is both the runtime key and the compile-time type. Strings wor
 declared without one:
 
 ```ts
-export const injectApiContextFactory: Accessor<ApiContextFactory> = dowel(ApiContextFactory) // the app provides it
+export const injectApiContextFactory = dowel(ApiContextFactory) // no default: the app provides it
 export const injectRequestUrl = dowel.optional(RequestUrl) // () => RequestUrl | undefined
 ```
 
@@ -64,7 +64,7 @@ app.use(myModule('https://logs.example')) // app.use order decides; last one win
 ## react
 
 ```tsx
-import { ContainerProvider, createContainer } from 'dowel-di/react'
+import { ContainerProvider, createContainer, runInContainer } from 'dowel-di/react'
 
 const container = createContainer() // one per request under SSR
 container.provide(Logger, new RemoteLogger(endpoint)) // overrides, before render
@@ -76,10 +76,16 @@ One door, in components and out. During render the container comes off context; 
 around a **synchronous** callback:
 
 ```tsx
-const Cart = () => <span>{injectLogger().status()}</span> // resolved off context
+const Reporter = () => {
+  const logger = injectLogger() // resolved off context, during render
+  return <button onClick={() => logger.log('clicked')}>go</button>
+}
 
-runInContainer(container, () => injectLogger()) // a loader, a guard, a service factory
+runInContainer(container, () => injectLogger().log('boot')) // a loader, a guard, a service factory
 ```
+
+An event handler runs *after* render, so resolve during render and close over the value — or bind a container
+around the handler.
 
 Accessors are plain functions, not hooks: callable in a branch, from a nested closure, and from a library that
 imports no react.
@@ -119,7 +125,7 @@ is written once, with no per-framework copies of it and no build step generating
 
 ```ts
 // my-lib/cart.ts — no framework anywhere in this file
-export const injectCart: Accessor<Cart> = dowel(Cart, () => cart(injectApiContext()))
+export const injectCart = dowel(Cart, () => cart(injectApiContext()))
 ```
 
 A factory resolves inside the caller's context, so a default may resolve other tokens — `injectApiContext()` above
@@ -180,6 +186,10 @@ resolve with the loop visible in the frames. Under angular you get its `NG0200` 
 
 **Class tokens are matched by identity**, so an override must import the very class the library declares, and that
 module must be a single copy in your graph.
+
+**Under `isolatedDeclarations`** an export initialised by a call needs an explicit type, and `Accessor<T>` is that
+type — `export const injectLogger: Accessor<Logger> = dowel(Logger, factory)`. Without that flag, inference does
+it for you.
 
 **Angular cannot tell a provided `null` from an absent token**, since that is what `inject(token, {optional: true})`
 answers in both cases. Vue and react keep them apart.
