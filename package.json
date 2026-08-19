@@ -1,7 +1,7 @@
 {
   "name": "dowel-di",
-  "version": "1.1.0",
-  "description": "Tiny token-based DI with no registration step. Per-request containers, lazy defaults, vue and react bindings. Zero deps, SSR-safe.",
+  "version": "2.0.0",
+  "description": "Tiny token-based DI with no registration step. Per-request containers, lazy defaults, vue, react and angular bindings. Zero deps, SSR-safe.",
   "license": "MIT",
   "author": "Florian Chiș",
   "repository": {
@@ -20,11 +20,17 @@
     "ssr",
     "vue",
     "react",
+    "angular",
     "typescript",
     "zero-dependency"
   ],
   "type": "module",
-  "sideEffects": false,
+  "// sideEffects": "the binding entries install themselves with `installBinding` at module scope, so a bundler must not drop one that is imported for that alone",
+  "sideEffects": [
+    "./dist/vue.*",
+    "./dist/react.*",
+    "./dist/angular.*"
+  ],
   "files": [
     "dist"
   ],
@@ -59,6 +65,16 @@
         "default": "./dist/react.cjs"
       }
     },
+    "./angular": {
+      "import": {
+        "types": "./dist/angular.d.mts",
+        "default": "./dist/angular.mjs"
+      },
+      "require": {
+        "types": "./dist/angular.d.cts",
+        "default": "./dist/angular.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "main": "./dist/index.cjs",
@@ -72,6 +88,9 @@
       ],
       "react": [
         "./dist/react.d.cts"
+      ],
+      "angular": [
+        "./dist/angular.d.cts"
       ]
     }
   },
@@ -90,10 +109,14 @@
     "prepublishOnly": "bun run build"
   },
   "peerDependencies": {
+    "@angular/core": "^20.0.0 || ^21.0.0 || ^22.0.0",
     "react": "^19.0.0",
     "vue": "^3.5.0"
   },
   "peerDependenciesMeta": {
+    "@angular/core": {
+      "optional": true
+    },
     "react": {
       "optional": true
     },
@@ -102,6 +125,7 @@
     }
   },
   "devDependencies": {
+    "@angular/core": "^22.1.2",
     "@arethetypeswrong/core": "^0.18.5",
     "@biomejs/biome": "^2.5.8",
     "@testing-library/react": "^16.3.0",

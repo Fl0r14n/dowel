@@ -18,8 +18,5 @@ export const tokenName = <T>(token: ProviderToken<T>): string => (typeof token =
 export const assertToken = <T>(token: ProviderToken<T>, operation: 'inject' | 'provide'): void => {
   if (token) return
   const received = token === '' ? 'an empty string' : String(token)
-  throw new Error(
-    `[dowel]: ${operation} was given ${received} as its token. A class token that is \`undefined\` here is ` +
-      'usually a circular import between the module that defines it and this one.'
-  )
+  throw new Error(`[dowel]: ${operation} was given ${received} as its token — usually a circular import.`)
 }

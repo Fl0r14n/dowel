@@ -3,7 +3,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createContainer, runInContainer } from '../container'
-import { ContainerProvider, inject, useService } from '.'
+import { ContainerProvider, inject } from '.'
 
 afterEach(cleanup)
 
@@ -12,17 +12,17 @@ describe('react binding, outside components', () => {
     expect(() => inject('anything')).toThrow('[dowel]: no active container')
   })
 
-  it('sends a component-side resolve to useService, since wrapping the tree would not help it', () => {
-    // this fires for a bare `inject` in a component body too — render never runs inside runInContainer, so
-    // <ContainerProvider> is not the fix there and the message must not claim it is
-    expect(() => inject('anything')).toThrow('useService')
-    expect(() => inject('anything')).not.toThrow('<ContainerProvider>')
+  it('names both doors in the message, since either one fixes it', () => {
+    expect(() => inject('anything')).toThrow('<ContainerProvider')
+    expect(() => inject('anything')).toThrow('runInContainer')
   })
 
   it('answers undefined for inject.optional with no container, so a util can be called from anywhere', () => {
-    // a client event handler, or a helper shared with non-component code, sits exactly here. `useService`
-    // and `useService.optional` still throw without a provider — that is a setup bug, not an absent value
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(inject.optional('anything')).toBeUndefined()
+    // quiet: reaching for react's context off render is how a library earns an "Invalid hook call" in the console
+    expect(consoleError).not.toHaveBeenCalled()
+    consoleError.mockRestore()
   })
 
   it('provides and injects a string token', () => {
@@ -174,11 +174,71 @@ class Greeter {
 }
 
 const Consumer = () => {
-  const greeter = useService(Greeter, () => new Greeter())
+  const greeter = inject(Greeter, () => new Greeter())
   return <span>{greeter.greeting}</span>
 }
 
-describe('useService', () => {
+describe('one door', () => {
+  it('resolves inside a component body without a hook, from a nested plain function', () => {
+    const container = createContainer()
+    container.provide(Greeter, new Greeter('from context'))
+    // what a library accessor is: a plain function, called inside render, importing no react
+    const injectGreeter = () => inject(Greeter)
+    const Nested = () => <span>{(() => injectGreeter().greeting)()}</span>
+
+    render(
+      <ContainerProvider container={container}>
+        <Nested />
+      </ContainerProvider>
+    )
+    expect(screen.getByText('from context')).toBeTruthy()
+  })
+
+  it('resolves conditionally, which a hook could not', () => {
+    const container = createContainer()
+    container.provide(Greeter, new Greeter('conditional'))
+    const Maybe = ({ show }: { show: boolean }) => <span>{show ? inject(Greeter).greeting : 'hidden'}</span>
+
+    const view = render(
+      <ContainerProvider container={container}>
+        <Maybe show={false} />
+      </ContainerProvider>
+    )
+    expect(screen.getByText('hidden')).toBeTruthy()
+    view.rerender(
+      <ContainerProvider container={container}>
+        <Maybe show />
+      </ContainerProvider>
+    )
+    expect(screen.getByText('conditional')).toBeTruthy()
+  })
+
+  it('prefers the container in context over one bound around the render', () => {
+    const bound = createContainer()
+    bound.provide(Greeter, new Greeter('bound'))
+    const inContext = createContainer()
+    inContext.provide(Greeter, new Greeter('in context'))
+
+    runInContainer(bound, () =>
+      render(
+        <ContainerProvider container={inContext}>
+          <Consumer />
+        </ContainerProvider>
+      )
+    )
+    expect(screen.getByText('in context')).toBeTruthy()
+  })
+
+  it('falls back to the bound container when the tree has no provider', () => {
+    const bound = createContainer()
+    bound.provide(Greeter, new Greeter('bound'))
+
+    runInContainer(bound, () => render(<Consumer />))
+    expect(screen.getByText('bound')).toBeTruthy()
+  })
+})
+
+describe('resolving during render', () => {
   it('resolves the value provided on the container in context', () => {
     const container = createContainer()
     container.provide(Greeter, new Greeter('provided'))
@@ -215,7 +275,7 @@ describe('useService', () => {
   it('resolves a factory default once and stores it on the container', () => {
     const container = createContainer()
     const factory = vi.fn(() => new Greeter('lazy'))
-    const LazyConsumer = () => <span>{useService(Greeter, factory).greeting}</span>
+    const LazyConsumer = () => <span>{inject(Greeter, factory).greeting}</span>
 
     render(
       <ContainerProvider container={container}>
@@ -230,15 +290,15 @@ describe('useService', () => {
   it('throws without a provider rather than silently using a global', () => {
     // react logs the thrown render error; silence it for this expected failure
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    expect(() => render(<Consumer />)).toThrow(/no container in context/)
+    expect(() => render(<Consumer />)).toThrow(/no active container/)
     consoleError.mockRestore()
   })
 
   it('throws for an unprovided token with no default, and .optional renders nothing instead', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const container = createContainer()
-    const Required = () => <span>{useService(Greeter).greeting}</span>
-    const Optional = () => <span>{useService.optional(Greeter)?.greeting ?? 'absent'}</span>
+    const Required = () => <span>{inject(Greeter).greeting}</span>
+    const Optional = () => <span>{inject.optional(Greeter)?.greeting ?? 'absent'}</span>
 
     expect(() =>
       render(

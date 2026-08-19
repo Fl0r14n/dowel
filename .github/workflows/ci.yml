@@ -39,7 +39,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
-      # the peers only: both smoke scripts import vue and react. bun installs them, node runs them —
+      # the peers only: both smoke scripts import vue, react and @angular/core. bun installs them, node runs them —
       # the point of this job is the node runtime, not the installer
       - uses: oven-sh/setup-bun@v2
         with:

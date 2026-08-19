@@ -1,17 +1,12 @@
 /** `createElement` rather than JSX, so this file needs no JSX build step. */
 
-import { createContext, createElement, type ReactNode, useContext } from 'react'
-import { type Container, containerRegistry, runInContainer } from '../container'
-import { createInject, type InjectFn } from '../registry'
-import type { ProviderToken } from '../token'
+import * as React from 'react'
+import { createContext, createElement, type ReactNode, use } from 'react'
+import { installBinding } from '../binding'
+import { type Container, containerRegistry } from '../container'
+import { createInject, type InjectFn, type RegistryLookup } from '../registry'
 
 export { type Container, createContainer, runInContainer } from '../container'
-
-/** Render never runs inside `runInContainer`, so `<ContainerProvider>` does not fix a bare `inject` in a
- * component body — `useService` does. */
-const OFF_CONTAINER = 'inside components use useService(token, default), elsewhere bind one with runInContainer(createContainer(), fn)'
-
-export const inject: InjectFn = createInject(required => containerRegistry(required, OFF_CONTAINER))
 
 const ContainerContext = createContext<Container | undefined>(undefined)
 
@@ -23,23 +18,32 @@ export interface ContainerProviderProps {
 export const ContainerProvider = ({ container, children }: ContainerProviderProps): ReactNode =>
   createElement(ContainerContext.Provider, { value: container }, children)
 
-const useContainer = (): Container => {
-  const container = useContext(ContainerContext)
-  if (!container) {
-    throw new Error('[dowel]: no container in context — wrap the tree in <ContainerProvider>')
+/** `null` only where react has never rendered, and calling `use` there is the one path that logs "Invalid hook
+ * call" — which a library must not do on an off-render `inject.optional`. Read defensively: a rename of the
+ * internals field degrades this to "try anyway", not to "components stop resolving". */
+const dispatcher = (React as unknown as Record<string, { H?: unknown } | undefined>)
+  .__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE
+
+/** `use`, not `useContext`: it takes no hook slot, so it is legal in a branch and from a nested plain function —
+ * which is what a library's `injectCart()` inside a component body is. Off render it throws, and that is the
+ * signal to look for a container bound by `runInContainer`. */
+const renderContainer = (): Container | undefined => {
+  if (dispatcher && dispatcher.H === null) return undefined
+  try {
+    return use(ContainerContext)
+  } catch {
+    return undefined
   }
-  return container
 }
 
-export const useService: InjectFn = Object.assign(
-  <T>(token: ProviderToken<T>, factory?: () => T): T => {
-    const container = useContainer()
-    return runInContainer(container, () => inject(token, factory))
-  },
-  {
-    optional: <T>(token: ProviderToken<T>): T | undefined => {
-      const container = useContainer()
-      return runInContainer(container, () => inject.optional<T>(token))
-    }
-  }
-)
+export const reactRegistry: RegistryLookup = required => {
+  const providers = renderContainer()?.providers || containerRegistry(false)
+  if (providers) return providers
+  if (!required) return undefined
+  throw new Error(`[dowel]: no active container — wrap the tree in <ContainerProvider>, or resolve inside runInContainer(container, fn).`)
+}
+
+/** One door: the container off context during render, the one `runInContainer` bound anywhere else. */
+export const inject: InjectFn = createInject(reactRegistry)
+
+installBinding(reactRegistry, 'react: during render under <ContainerProvider>, or inside runInContainer')

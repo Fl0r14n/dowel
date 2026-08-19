@@ -92,7 +92,7 @@ describe('runInContainer', () => {
       await Promise.resolve()
       return inject('late', () => 'never')
     })
-    await expect(late).rejects.toThrow('after an `await` inside runInContainer')
+    await expect(late).rejects.toThrow('which ends when its callback returns')
     expect(c.providers.has('late')).toBe(false)
   })
 })

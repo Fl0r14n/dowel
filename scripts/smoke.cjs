@@ -2,7 +2,8 @@
  * This is what catches a dual-package build where only one condition actually resolves. */
 
 const { createContainer, runInContainer } = require('../dist/index.cjs')
-const { ContainerProvider, inject, useService } = require('../dist/react.cjs')
+const { ContainerProvider, inject } = require('../dist/react.cjs')
+const { inject: aInject, provideDowel } = require('../dist/angular.cjs')
 const { createProviders, inject: vInject } = require('../dist/vue.cjs')
 
 let failed = 0
@@ -18,8 +19,8 @@ class Svc {
 // --- container path (what the react binding resolves through)
 const c = createContainer()
 check('container lazy default', runInContainer(c, () => inject(Svc, () => new Svc())).value === 'x')
-check('react binding exports', typeof ContainerProvider === 'function' && typeof useService === 'function')
-check('optional on both doors', typeof inject.optional === 'function' && typeof useService.optional === 'function')
+check('react binding exports', typeof ContainerProvider === 'function' && typeof inject === 'function')
+check('one door, with optional on it', typeof inject.optional === 'function')
 
 // require must give a container whose provide method actually shipped, not just the map
 const wired = createContainer()
@@ -39,5 +40,10 @@ check(
   'vue binding exports',
   typeof createProviders === 'function' && typeof vInject === 'function' && typeof vInject.optional === 'function'
 )
+
+const { Injector, runInInjectionContext } = require('@angular/core')
+const ngInjector = Injector.create({ providers: [provideDowel(provide => provide('answer', 42))] })
+check('angular binding over require', runInInjectionContext(ngInjector, () => aInject('answer')) === 42)
+check('angular optional over require', typeof aInject.optional === 'function')
 
 process.exit((failed && 1) || 0)

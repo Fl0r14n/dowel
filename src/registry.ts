@@ -41,9 +41,7 @@ export const createInject = (registry: RegistryLookup): InjectFn => {
     }
     if (required) {
       throw new Error(
-        `[dowel]: nothing provided ${tokenName(token)} and this resolve had no default. Provide it during ` +
-          'bootstrap, pass a default — inject(token, () => new Thing()) — or use inject.optional(token) if absent is ' +
-          'a valid answer.'
+        `[dowel]: nothing provided ${tokenName(token)}. Provide it, pass a default — inject(token, () => …) — or use inject.optional.`
       )
     }
     return undefined

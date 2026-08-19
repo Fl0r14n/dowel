@@ -1,5 +1,6 @@
 import { type App, hasInjectionContext, type InjectionKey, inject as vueInject } from 'vue'
-import { createInject, createProvide, type InjectFn, type ProvideFn, type Registry } from '../registry'
+import { installBinding } from '../binding'
+import { createInject, createProvide, type InjectFn, type ProvideFn, type Registry, type RegistryLookup } from '../registry'
 
 const PROVIDERS = Symbol.for('dowel.providers.v1') as InjectionKey<Registry>
 
@@ -30,13 +31,15 @@ export const createProviders = (): ProvidersPlugin => ({
   }
 })
 
-export const inject: InjectFn = createInject(required => {
+export const vueRegistry: RegistryLookup = required => {
   const providers = (hasInjectionContext() && vueInject(PROVIDERS, undefined)) || undefined
   if (providers) return providers
   // `inject.optional` off-context answers undefined: no registry is one more way for a token to be absent
   if (!required) return undefined
-  throw new Error(
-    '[dowel]: no provider registry — either this ran outside a vue injection context (resolve inside ' +
-      'a component setup, a store setup or a navigation guard), or `app.use(createProviders())` was never called.'
-  )
-})
+  throw new Error(`[dowel]: no provider registry — resolve inside a vue injection context, and app.use(createProviders()) once.`)
+}
+
+export const inject: InjectFn = createInject(vueRegistry)
+
+// at module scope, not in `createProviders`: a library's resolve must work before bootstrap code has run
+installBinding(vueRegistry, 'vue: inside an injection context')

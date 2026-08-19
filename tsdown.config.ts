@@ -7,7 +7,8 @@ const config: ReturnType<typeof defineConfig> = defineConfig({
   entry: {
     index: 'src/index.ts',
     vue: 'src/vue/index.ts',
-    react: 'src/react/index.ts'
+    react: 'src/react/index.ts',
+    angular: 'src/angular/index.ts'
   },
   format: ['esm', 'cjs'],
   dts: true,
