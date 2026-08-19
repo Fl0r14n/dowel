@@ -90,6 +90,18 @@ describe('string tokens', () => {
     expect(runInInjectionContext(rootInjector(), () => ngInject(angularToken<string>('api-url')))).toBe('https://occ.example')
   })
 
+  it('keep the identity anything captured before the declaration ran', () => {
+    // an app assembling its providers, or the other half of a dual-loaded package, mints the token first
+    const captured = angularToken<string>('captured-first')
+    const injectCaptured = dowel('captured-first', () => 'the default')
+
+    expect(angularToken<string>('captured-first')).toBe(captured)
+    expect(runInInjectionContext(rootInjector(), injectCaptured)).toBe('the default')
+    // and the reference it took still overrides, rather than being silently dropped
+    const injector = rootInjector({ provide: captured, useValue: 'the override' })
+    expect(runInInjectionContext(injector, injectCaptured)).toBe('the override')
+  })
+
   it('are overridden through that same token', () => {
     const injector = rootInjector({ provide: angularToken<string>('api-url'), useValue: 'https://staging.example' })
 

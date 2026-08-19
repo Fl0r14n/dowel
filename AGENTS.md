@@ -107,8 +107,12 @@ Details worth keeping:
 
 - A class that already has `ɵprov` keeps it. That is a class the angular compiler already processed — an
   `@Injectable` used as a dowel token — and its own metadata wins.
-- Strings cannot carry `ɵprov`, so a string token mints an `InjectionToken`, deterministic because the default is
-  known at declaration. `angularToken(name)` is how an app reaches it to provide one.
+- Strings cannot be keys in angular's DI, so a string token mints an `InjectionToken`. `angularToken(name)` is the
+  only writer of that map and never replaces an entry, because a reference taken before the declaration ran — an
+  app assembling its providers, or the other half of a dual-loaded package — has to keep matching what a resolve
+  injects against; an earlier version minted a second token there and dropped the override silently. The map is
+  realm-global for the same reason, and the token is minted *without* a factory so that both kinds of token take
+  the one `ɵprov` path above. There is a test that captures a token before its declaration.
 - `assertInInjectionContext` in a `try` is the context check, since angular exports no boolean one. Wrapping the
   resolve itself would be shorter and wrong: that call runs factory defaults, and one that throws must surface as
   its own error rather than as "no injection context".

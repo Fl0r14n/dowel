@@ -5,16 +5,20 @@
 import { assertInInjectionContext, InjectionToken, inject as ngInject } from '@angular/core'
 import { defineInjectable, registerInjectable } from '@angular/core/primitives/di'
 import { type BindingRegister, installBinding } from '../binding'
+import { globalSlot } from '../global'
 import { type BindingResolve, createInject, type InjectFn, MISSING } from '../registry'
 import type { ProviderToken, Type } from '../token'
 
-/** Angular has no string tokens, so a string gets a minted `InjectionToken` — deterministic, since the default is
- * known at declaration. Reach for it to override one: `{ provide: angularToken('api-url'), useValue }`. */
-const minted = new Map<string, InjectionToken<any>>()
+/** Angular has no string tokens, so a string resolves through a minted `InjectionToken` — the only writer of this
+ * map, and never a replacement: a reference taken before the declaration ran, by an app assembling its providers
+ * or by the other half of a dual-loaded package, has to keep matching what a resolve injects against. Realm-global
+ * for that second reason. Reach for it to override one: `{ provide: angularToken('api-url'), useValue }`. */
+const minted = globalSlot<Map<string, InjectionToken<any>>>('dowel.angular.tokens.v1', () => new Map())
 
 export const angularToken = <T>(name: string): InjectionToken<T> => {
   const existing = minted.get(name)
   if (existing) return existing
+  // no factory here: the default arrives later, as `ɵprov`, by the same path a class token's does
   const token = new InjectionToken<T>(name)
   minted.set(name, token)
   return token
@@ -47,16 +51,13 @@ export const angularResolve: BindingResolve = (token, required) => {
   return value as never
 }
 
-/** A string token's default lives on a minted `InjectionToken`; a class token's lives on the class itself, as the
- * `ɵprov` an `@Injectable` would have compiled to. A class that already has one keeps it. */
+/** The declared default becomes the token's own `ɵprov` — what `@Injectable({ providedIn: 'root' })` compiles to,
+ * and what an `InjectionToken`'s `factory` option sets. One path for both kinds of token, and a target that
+ * already carries metadata keeps it: that is an `@Injectable` class used as a dowel token. */
 export const angularRegister: BindingRegister = (token, factory) => {
-  if (typeof token === 'string') {
-    minted.set(token, new InjectionToken(token, { providedIn: 'root', factory }))
-    return
-  }
-  const declared = token as Type<unknown> & { ɵprov?: unknown }
-  if (declared.ɵprov) return
-  registerInjectable(declared, defineInjectable({ token, providedIn: 'root', factory }))
+  const target = ngTokenFor(token) as Type<unknown> & { ɵprov?: unknown }
+  if (target.ɵprov) return
+  registerInjectable(target, defineInjectable({ token: target, providedIn: 'root', factory }))
 }
 
 export const inject: InjectFn = createInject(angularResolve)
