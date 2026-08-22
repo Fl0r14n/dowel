@@ -61,6 +61,27 @@ describe('a declared default becomes the token’s own angular factory', () => {
   })
 })
 
+describe('a subclass token', () => {
+  // the shape a library hits when a b2b resource extends its b2c base: `ɵprov` is found through the prototype
+  // chain, so a truthiness check skips the subclass and angular answers NG0201 for it — the inherited record
+  // names the *parent* as its token
+  abstract class Base {
+    abstract who: string
+  }
+  abstract class Special extends Base {}
+  dowel(Base, () => ({ who: 'base' }))
+  const injectSpecial = dowel(Special, () => ({ who: 'special' }))
+
+  it('registers its own factory rather than inheriting the parent’s', () => {
+    expect(runInInjectionContext(rootInjector(), () => ngInject(Special).who)).toBe('special')
+    expect(runInInjectionContext(rootInjector(), injectSpecial).who).toBe('special')
+  })
+
+  it('leaves the parent resolving to its own', () => {
+    expect(runInInjectionContext(rootInjector(), () => ngInject(Base).who)).toBe('base')
+  })
+})
+
 describe('a token declared without a default', () => {
   abstract class ContextFactory {
     abstract create: () => string

@@ -53,10 +53,15 @@ export const angularResolve: BindingResolve = (token, required) => {
 
 /** The declared default becomes the token's own `ɵprov` — what `@Injectable({ providedIn: 'root' })` compiles to,
  * and what an `InjectionToken`'s `factory` option sets. One path for both kinds of token, and a target that
- * already carries metadata keeps it: that is an `@Injectable` class used as a dowel token. */
+ * already carries metadata keeps it: that is an `@Injectable` class used as a dowel token.
+ *
+ * The check is for an **own** `ɵprov`: `class B extends A` sees `A`'s record through the prototype chain, so a
+ * truthiness test alone skips `B` and angular then answers NG0201 for it — the inherited record names `A` as
+ * its token. A subclass token is its own token. Own *and* truthy, because a minted `InjectionToken` carries an
+ * own `ɵprov` of `undefined` until this fills it. */
 export const angularRegister: BindingRegister = (token, factory) => {
   const target = ngTokenFor(token) as Type<unknown> & { ɵprov?: unknown }
-  if (target.ɵprov) return
+  if (target.ɵprov && Object.hasOwn(target, 'ɵprov')) return
   registerInjectable(target, defineInjectable({ token: target, providedIn: 'root', factory }))
 }
 

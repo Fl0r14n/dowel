@@ -1,9 +1,9 @@
 {
   "name": "dowel-di",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Token-based DI for libraries that ship to vue, react and angular. One declaration per token, native angular DI, zero deps, SSR-safe.",
   "license": "MIT",
-  "author": "Florian Chiș",
+  "author": "Florian Chi\u0219",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Fl0r14n/dowel.git"
